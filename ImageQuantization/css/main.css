@@ -82,8 +82,26 @@ select {
 	min-width: 175px;
 }
 
+#reduced-image-container {
+	background-image:
+	-moz-linear-gradient(45deg, #EEE 25%, transparent 25%),
+	-moz-linear-gradient(-45deg, #EEE 25%, transparent 25%),
+	-moz-linear-gradient(45deg, transparent 75%, #EEE 75%),
+	-moz-linear-gradient(-45deg, transparent 75%, #EEE 75%);
+	background-image:
+	-webkit-gradient(linear, 0 100%, 100% 0, color-stop(.25, #EEE), color-stop(.25, transparent)),
+	-webkit-gradient(linear, 0 0, 100% 100%, color-stop(.25, #EEE), color-stop(.25, transparent)),
+	-webkit-gradient(linear, 0 100%, 100% 0, color-stop(.75, transparent), color-stop(.75, #EEE)),
+	-webkit-gradient(linear, 0 0, 100% 100%, color-stop(.75, transparent), color-stop(.75, #EEE));
+
+	-moz-background-size:20px 20px;
+	background-size:20px 20px;
+	-webkit-background-size:20px 21px; /* override value for shitty webkit */
+
+	background-position:0 0, 10px 0, 10px -10px, 0px 10px;
+}
+
 #reduced-image {
 	cursor: pointer;
 }
-
 

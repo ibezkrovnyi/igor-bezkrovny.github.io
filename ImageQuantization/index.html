@@ -7,16 +7,13 @@
 	<script src="js/imageList.js"></script>
 	<script src="js/usage.js"></script>
 	<script src="js/main.js"></script>
-	<script src="js/iq.js"></script>
+	<script src="../../_build/iq.js"></script>
 </head>
 <body onload="APP.main()" onclick="APP.onClick(event)" onmousedown="APP.onMouse(true,event)" onmouseup="APP.onMouse(false,event)" ontouchstart="APP.onMouse(true,event)" ontouchend="APP.onMouse(false,event)">
 	<div>
 		<div class="box" style="max-width: 400px; min-height : 800px">
 			<h4>Options</h4>
 			<div class="options">
-				<div class="option">
-					Initial Colors (1..65536 and even more): <input id="initialColors" type="text" value="256" onchange="APP.onConfigChanged()" oninput="APP.onConfigChanged()">
-				</div>
 				<div class="option">
 					Colors (1..65536 and even more): <input id="colors" type="text" value="256" onchange="APP.onConfigChanged()" oninput="APP.onConfigChanged()">
 					<input type="range" onchange="APP.onColorSliderChange()" oninput="document.getElementById('colors').value=this.value" id="colors-slider"
@@ -36,6 +33,7 @@
 					Palette Quantizer: <select id="paletteQuantizer" onchange="APP.onConfigChanged()">
 					<option value="neuquant" selected>NeuQuant</option>
 					<option value="rgbquant">RgbQuant</option>
+					<option value="wuquant">WuQuant (Xiaolin Wu)</option>
 				</select>
 				</div>
 				<div class="option">

@@ -14,8 +14,9 @@ var APP;
 		return src.split("/").pop().split(".");
 	}
 
-	function drawPixels (idxi8, width0, width1) {
-		var idxi32 = new Uint32Array(idxi8.buffer);
+	function drawPixels (pointContainer, width0, width1) {
+		var idxi8 = pointContainer.exportUint8Array(),
+			idxi32 = new Uint32Array(idxi8.buffer);
 
 		width1 = width1 || width0;
 
@@ -52,7 +53,7 @@ var APP;
 		return can2;
 	}
 
-	exports.process = function (img, optionColors, optionInitialColors, optionPaletteQuantizer, optionImageDithering) {
+	exports.process = function (img, optionColors, optionPaletteQuantizer, optionImageDithering) {
 		var pointBuffer,
 			originalPointBuffer,
 			paletteQuantizer,
@@ -65,33 +66,36 @@ var APP;
 		originalPointBuffer = pointBuffer.clone();
 
 		var time = Date.now();
-		var colorHistogram = new IQ.Utils.ColorHistogram(2, optionColors << 2);
 
-			timeMark("...sample", function () {
-				if (optionPaletteQuantizer === "neuquant") {
-					paletteQuantizer = new IQ.Palette.NeuQuant(optionInitialColors);
-				} else {
-					paletteQuantizer = new IQ.Palette.RgbQuant(optionInitialColors);
-				}
-				paletteQuantizer.sample(pointBuffer);
-				colorHistogram.sample(pointBuffer);
-			});
+		timeMark("...sample", function () {
+			switch(optionPaletteQuantizer) {
+				case "neuquant":
+					paletteQuantizer = new IQ.Palette.NeuQuant(optionColors);
+					break;
+				case "wuquant":
+					paletteQuantizer = new IQ.Palette.WuQuant(optionColors);
+					break;
+				case "rgbquant":
+					paletteQuantizer = new IQ.Palette.RgbQuant(optionColors);
+					break;
+			}
+			paletteQuantizer.sample(pointBuffer);
+		});
 
-			timeMark("...palette", function () {
-				pal8 = paletteQuantizer.quantize();
-				pal8.reduce(colorHistogram, optionColors);
-			});
+		timeMark("...palette", function () {
+			pal8 = paletteQuantizer.quantize();
+		});
 
-			timeMark("...dither", function () {
-				var imageQuantizer;
-				if (optionImageDithering === -1) {
-					imageQuantizer = new IQ.Image.NearestNeighbour();
-				} else {
-					imageQuantizer = new IQ.Image.ErrorDiffusionDithering(optionImageDithering);
-				}
+		timeMark("...dither", function () {
+			var imageQuantizer;
+			if (optionImageDithering === -1) {
+				imageQuantizer = new IQ.Image.NearestNeighbour();
+			} else {
+				imageQuantizer = new IQ.Image.ErrorDiffusionDithering(optionImageDithering);
+			}
 
-				img8 = imageQuantizer.quantize(pointBuffer, pal8).exportUint8Array();
-			});
+			img8 = imageQuantizer.quantize(pointBuffer, pal8);
+		});
 
 		time = Date.now() - time;
 
@@ -101,7 +105,7 @@ var APP;
 
 		// DRAW ORIGINAL IMAGE
 
-		var canvas = drawPixels(originalPointBuffer.exportUint8Array(), img.naturalWidth);
+		var canvas = drawPixels(originalPointBuffer, img.naturalWidth);
 		canvas.id = "original-image";
 		canvas.style.display = "none";
 		document.getElementById("reduced-image-container").appendChild(canvas);
@@ -117,12 +121,15 @@ var APP;
 		// DRAW PALETTE
 
 		// TODO: temporary solution. see Palette class todo
-		var uint32Array = pal8._paletteArray.map(function (point) {
-			return point.uint32
-		});
-		var uint8array = new Uint8Array((new Uint32Array(uint32Array)).buffer);
+		/*
+				var uint32Array = pal8._paletteArray.map(function (point) {
+					return point.uint32
+				});
+				var uint8array = new Uint8Array((new Uint32Array(uint32Array)).buffer);
 
-		canvas = drawPixels(uint8array, 16, 128);
+				canvas = drawPixels(uint8array, 16, 128);
+		*/
+		canvas = drawPixels(pal8.getPointContainer(), 16, 128);
 		document.getElementById("palette-container").appendChild(canvas);
 
 	};

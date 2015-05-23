@@ -12,6 +12,11 @@ var IQ;
                 this.r = this.g = this.b = this.a = 0;
                 this.rgba = [this.r, this.g, this.b, this.a];
                 this.uint32 = -1 >>> 0;
+                this.lab = {
+                    l: 0,
+                    a: 0,
+                    b: 0
+                };
                 //this.set(...args);
             }
             Point.createByQuadruplet = function (quadruplet) {
@@ -48,6 +53,9 @@ var IQ;
                 this.a = point.a;
                 this.uint32 = point.uint32;
                 this.rgba = point.rgba.slice(0);
+                this.lab.l = point.lab.l;
+                this.lab.a = point.lab.a;
+                this.lab.b = point.lab.b;
             };
             Point.prototype.set = function () {
                 var args = [];
@@ -83,6 +91,30 @@ var IQ;
                 }
                 this._loadQuadruplet();
             };
+            /*
+             * TODO:
+             Luminance from RGB:
+    
+             Luminance (standard for certain colour spaces): (0.2126*R + 0.7152*G + 0.0722*B) [1]
+             Luminance (perceived option 1): (0.299*R + 0.587*G + 0.114*B) [2]
+             Luminance (perceived option 2, slower to calculate):  sqrt( 0.241*R^2 + 0.691*G^2 + 0.068*B^2 ) ? sqrt( 0.299*R^2 + 0.587*G^2 + 0.114*B^2 ) (thanks to @MatthewHerbst) [http://alienryderflex.com/hsp.html]
+            */
+            Point.prototype.getLuminosity = function (useAlphaChannel) {
+                var r = this.r, g = this.g, b = this.b;
+                if (useAlphaChannel) {
+                    r = Math.min(255, 255 - this.a + this.a * r / 255);
+                    g = Math.min(255, 255 - this.a + this.a * g / 255);
+                    b = Math.min(255, 255 - this.a + this.a * b / 255);
+                }
+                //var luma = this.r * Point._RED_COEFFICIENT + this.g * Point._GREEN_COEFFICIENT + this.b * Point._BLUE_COEFFICIENT;
+                /*
+                            if(useAlphaChannel) {
+                                luma = (luma * (255 - this.a)) / 255;
+                            }
+                */
+                var luma = r * Point._RED_COEFFICIENT + g * Point._GREEN_COEFFICIENT + b * Point._BLUE_COEFFICIENT;
+                return luma;
+            };
             Point.prototype._loadUINT32 = function () {
                 this.uint32 = ((this.a << 24) |
                     (this.b << 16) |
@@ -103,7 +135,15 @@ var IQ;
                     this.b,
                     this.a
                 ];
+                var xyz = Utils.rgb2xyz(this.r, this.g, this.b);
+                var lab = Utils.xyz2lab(xyz.x, xyz.y, xyz.z);
+                this.lab.l = lab.l;
+                this.lab.a = lab.a;
+                this.lab.b = lab.b;
             };
+            Point._RED_COEFFICIENT = 0.212655;
+            Point._GREEN_COEFFICIENT = 0.715158;
+            Point._BLUE_COEFFICIENT = 0.072187;
             return Point;
         })();
         Utils.Point = Point;
@@ -129,6 +169,8 @@ var IQ;
         Utils.typeOf = typeOf;
         // http://alienryderflex.com/hsp.html
         function rgb2lum(r, g, b) {
+            // TODO: luma = point.r * RED_COEFFICIENT + point.g * GREEN_COEFFICIENT + point.b * BLUE_COEFFICIENT
+            // TODO: why here another formula??
             return Math.sqrt(Pr * r * r +
                 Pg * g * g +
                 Pb * b * b);
@@ -246,11 +288,98 @@ var IQ;
         var rd = 255, gd = 255, bd = 255, ad = 255;
         var euclMax = Math.sqrt(Pr * rd * rd + Pg * gd * gd + Pb * bd * bd + Pa * ad * ad);
         // perceptual Euclidean color distance
-        function distEuclidean(rgb0, rgb1) {
-            var rd = rgb1[0] - rgb0[0], gd = rgb1[1] - rgb0[1], bd = rgb1[2] - rgb0[2], ad = (rgb1[3] - rgb0[3]);
+        function distEuclidean(colorA, colorB) {
+            var rd = colorB.r - colorA.r, gd = colorB.g - colorA.g, bd = colorB.b - colorA.b, ad = colorB.a - colorA.a;
             return Math.sqrt(Pr * rd * rd + Pg * gd * gd + Pb * bd * bd + Pa * ad * ad) / euclMax;
         }
         Utils.distEuclidean = distEuclidean;
+        function rgb2xyz(r, g, b) {
+            r = r / 255; //R from 0 to 255
+            g = g / 255; //G from 0 to 255
+            b = b / 255; //B from 0 to 255
+            r = r > 0.04045 ? Math.pow((r + 0.055) / 1.055, 2.4) : r / 12.92;
+            g = g > 0.04045 ? Math.pow((g + 0.055) / 1.055, 2.4) : g / 12.92;
+            b = b > 0.04045 ? Math.pow((b + 0.055) / 1.055, 2.4) : b / 12.92;
+            r = r * 100;
+            g = g * 100;
+            b = b * 100;
+            //Observer. = 2�, Illuminant = D65
+            return {
+                x: r * 0.4124 + g * 0.3576 + b * 0.1805,
+                y: r * 0.2126 + g * 0.7152 + b * 0.0722,
+                z: r * 0.0193 + g * 0.1192 + b * 0.9505
+            };
+        }
+        Utils.rgb2xyz = rgb2xyz;
+        function xyz2rgb(x, y, z) {
+            x = x / 100; //X from 0 to  95.047      (Observer = 2�, Illuminant = D65)
+            y = y / 100; //Y from 0 to 100.000
+            z = z / 100; //Z from 0 to 108.883
+            var r = x * 3.2406 + y * -1.5372 + z * -0.4986, g = x * -0.9689 + y * 1.8758 + z * 0.0415, b = x * 0.0557 + y * -0.2040 + z * 1.0570;
+            r = r > 0.0031308 ? 1.055 * Math.pow(r, 1 / 2.4) - 0.055 : 12.92 * r;
+            g = g > 0.0031308 ? 1.055 * Math.pow(g, 1 / 2.4) - 0.055 : 12.92 * g;
+            b = b > 0.0031308 ? 1.055 * Math.pow(b, 1 / 2.4) - 0.055 : 12.92 * b;
+            return {
+                r: r * 255,
+                g: g * 255,
+                b: b * 255
+            };
+        }
+        var refX = 95.047, refY = 100.0, refZ = 108.883;
+        function xyz2lab(x, y, z) {
+            x = x / refX; //ref_X =  95.047   Observer= 2�, Illuminant= D65
+            y = y / refY; //ref_Y = 100.000
+            z = z / refZ; //ref_Z = 108.883
+            x = x > 0.008856 ? Math.pow(x, 1 / 3) : (7.787 * x) + (16 / 116);
+            y = y > 0.008856 ? Math.pow(y, 1 / 3) : (7.787 * y) + (16 / 116);
+            z = z > 0.008856 ? Math.pow(z, 1 / 3) : (7.787 * z) + (16 / 116);
+            return {
+                l: (116 * y) - 16,
+                a: 500 * (x - y),
+                b: 200 * (y - z)
+            };
+        }
+        Utils.xyz2lab = xyz2lab;
+        function lab2xyz(l, a, b) {
+            var y = (l + 16) / 116, x = a / 500 + y, z = y - b / 200;
+            var y3 = Math.pow(y, 3), x3 = Math.pow(x, 3), z3 = Math.pow(z, 3);
+            y = y3 > 0.008856 ? y3 : (y - 16 / 116) / 7.787;
+            x = x3 > 0.008856 ? x3 : (x - 16 / 116) / 7.787;
+            z = z3 > 0.008856 ? z3 : (z - 16 / 116) / 7.787;
+            return {
+                x: refX * x,
+                y: refY * y,
+                z: refZ * z //ref_Z = 108.883
+            };
+        }
+        /*
+         * Computes CIE94 distance between 2 colors in LAB space.
+         *
+         * p1 = [l1, a1, b1]
+         * p2 = [l2, a2, b2]
+         * Returns distance:float
+         *
+         * Usage example:
+         *     var d = CIE94_dist([94.0, -0.1, -0.55], [77.0, 0.5, 0.45])
+         *
+         * Iulius Curt, april 2013
+         */
+        function CIE94Distance(colorA, colorB) {
+            /*
+             var xyzA = rgb2xyz(colorA.r, colorA.g, colorA.b);
+             var labA = xyz2lab(xyzA.x, xyzA.y, xyzA.z);
+    
+             var xyzB = rgb2xyz(colorB.r, colorB.g, colorB.b);
+             var labB = xyz2lab(xyzB.x, xyzB.y, xyzB.z);
+             */
+            var labA = colorA.lab, labB = colorB.lab;
+            var Kl = 2.0, K1 = 0.048, K2 = 0.014;
+            var dL = labA.l - labB.l, dA = labA.a - labB.a, dB = labA.b - labB.b, c1 = Math.sqrt(labA.a * labA.a + labA.b * labA.b), c2 = Math.sqrt(labB.a * labB.a + labB.b * labB.b), dC = c1 - c2, deltaH = dA * dA + dB * dB - dC * dC;
+            deltaH = deltaH < 0 ? 0 : Math.sqrt(deltaH);
+            var i = Math.pow(dL / Kl, 2) + Math.pow(dC / (1.0 + K1 * c1), 2) + Math.pow(deltaH / (1.0 + K2 * c1), 2);
+            return i < 0 ? 0 : Math.sqrt(i) / 200;
+        }
+        Utils.CIE94Distance = CIE94Distance;
     })(Utils = IQ.Utils || (IQ.Utils = {}));
 })(IQ || (IQ = {}));
 /// <reference path='./utils.ts' />
@@ -316,7 +445,7 @@ var IQ;
         Utils.HueStatistics = HueStatistics;
     })(Utils = IQ.Utils || (IQ.Utils = {}));
 })(IQ || (IQ = {}));
-/// <reference path='hueStatistics.ts' />
+/// <reference path='../../utils/hueStatistics.ts' />
 var IQ;
 (function (IQ) {
     var Utils;
@@ -333,18 +462,19 @@ var IQ;
                 this._hueStats = new Utils.HueStatistics(ColorHistogram._hueGroups, this._minHueCols);
                 this._histogram = {};
             }
-            ColorHistogram.prototype.sample = function (image) {
+            ColorHistogram.prototype.sample = function (pointBuffer) {
                 switch (this._method) {
                     case 1:
-                        this._colorStats1D(image);
+                        this._colorStats1D(pointBuffer);
                         break;
                     case 2:
-                        this._colorStats2D(image);
+                        this._colorStats2D(pointBuffer);
                         break;
                 }
             };
             ColorHistogram.prototype.getImportanceSortedColorsIDXI32 = function () {
                 var sorted = Utils.sortedHashKeys(this._histogram, true);
+                // TODO: check that other code waits for null
                 if (sorted.length == 0) {
                     return null;
                 }
@@ -424,7 +554,7 @@ var IQ;
     })(Utils = IQ.Utils || (IQ.Utils = {}));
 })(IQ || (IQ = {}));
 /// <reference path='point.ts' />
-///<reference path="colorHistogram.ts"/>
+///<reference path="../palette/rgbquant/colorHistogram.ts"/>
 // TODO: make paletteArray via pointBuffer, so, export will be available via pointBuffer.exportXXX
 var IQ;
 (function (IQ) {
@@ -433,52 +563,62 @@ var IQ;
         var hueGroups = 10;
         var Palette = (function () {
             function Palette() {
-                this._paletteArray = [];
+                this._pointArray = [];
                 this._i32idx = {};
                 this._pointContainer = new Utils.PointContainer();
                 this._pointContainer.setHeight(1);
-                this._paletteArray = this._pointContainer.getPointArray();
+                this._pointArray = this._pointContainer.getPointArray();
             }
             Palette.prototype.add = function (color) {
-                this._paletteArray.push(color);
-                this._pointContainer.setWidth(this._paletteArray.length);
+                this._pointArray.push(color);
+                this._pointContainer.setWidth(this._pointArray.length);
+            };
+            // TOTRY: use HUSL - http://boronine.com/husl/ http://www.husl-colors.org/ https://github.com/husl-colors/husl
+            Palette.prototype.getNearestColor = function (color) {
+                return this._pointArray[this.getNearestIndex(color) | 0];
+            };
+            Palette.prototype.getPointContainer = function () {
+                return this._pointContainer;
             };
             // TOTRY: use HUSL - http://boronine.com/husl/
-            Palette.prototype.nearestColor = function (point) {
-                return this._paletteArray[this.nearestIndex_Point(point) | 0];
-            };
-            // TOTRY: use HUSL - http://boronine.com/husl/
-            Palette.prototype.nearestIndex = function (i32) {
-                var idx = this._nearestPointFromCache("" + i32);
-                if (idx >= 0)
-                    return idx;
-                var min = 1000, rgb = [
-                    (i32 & 0xff),
-                    (i32 >>> 8) & 0xff,
-                    (i32 >>> 16) & 0xff,
-                    (i32 >>> 24) & 0xff
-                ], len = this._paletteArray.length;
-                idx = 0;
-                for (var i = 0; i < len; i++) {
-                    var dist = Utils.distEuclidean(rgb, this._paletteArray[i].rgba);
-                    if (dist < min) {
-                        min = dist;
-                        idx = i;
+            /*
+                    public nearestIndexByUint32(i32) {
+                        var idx : number = this._nearestPointFromCache("" + i32);
+                        if (idx >= 0) return idx;
+            
+                        var min = 1000,
+                            rgb = [
+                                (i32 & 0xff),
+                                (i32 >>> 8) & 0xff,
+                                (i32 >>> 16) & 0xff,
+                                (i32 >>> 24) & 0xff
+                            ],
+                            len = this._pointArray.length;
+            
+                        idx = 0;
+                        for (var i = 0; i < len; i++) {
+                            var dist = Utils.distEuclidean(rgb, this._pointArray[i].rgba);
+            
+                            if (dist < min) {
+                                min = dist;
+                                idx = i;
+                            }
+                        }
+            
+                        this._i32idx[i32] = idx;
+                        return idx;
                     }
-                }
-                this._i32idx[i32] = idx;
-                return idx;
-            };
+            */
             Palette.prototype._nearestPointFromCache = function (key) {
                 return typeof this._i32idx[key] === "number" ? this._i32idx[key] : -1;
             };
-            Palette.prototype.nearestIndex_Point = function (point) {
+            Palette.prototype.getNearestIndex = function (point) {
                 var idx = this._nearestPointFromCache("" + point.uint32);
                 if (idx >= 0)
                     return idx;
                 var minimalDistance = 1000.0;
-                for (var idx = 0, i = 0, l = this._paletteArray.length; i < l; i++) {
-                    var distance = Utils.distEuclidean(point.rgba, this._paletteArray[i].rgba);
+                for (var idx = 0, i = 0, l = this._pointArray.length; i < l; i++) {
+                    var distance = Utils.distEuclidean(point, this._pointArray[i]);
                     if (distance < minimalDistance) {
                         minimalDistance = distance;
                         idx = i;
@@ -487,71 +627,61 @@ var IQ;
                 this._i32idx[point.uint32] = idx;
                 return idx;
             };
-            Palette.prototype.reduce = function (histogram, colors) {
-                if (this._paletteArray.length > colors) {
-                    var idxi32 = histogram.getImportanceSortedColorsIDXI32();
-                    // quantize histogram to existing palette
-                    var keep = [], uniqueColors = 0, idx, pruned = false;
-                    for (var i = 0, len = idxi32.length; i < len; i++) {
-                        // palette length reached, unset all remaining colors (sparse palette)
-                        if (uniqueColors >= colors) {
-                            this.prunePal(keep);
-                            pruned = true;
-                            break;
-                        }
-                        else {
-                            idx = this.nearestIndex(idxi32[i]);
-                            if (keep.indexOf(idx) < 0) {
-                                keep.push(idx);
-                                uniqueColors++;
-                            }
-                        }
-                    }
-                    if (!pruned) {
-                        this.prunePal(keep);
-                    }
-                }
-            };
-            // TODO: check usage, not tested!
-            Palette.prototype.prunePal = function (keep) {
-                var colors = this._paletteArray.length;
-                for (var colorIndex = colors - 1; colorIndex >= 0; colorIndex--) {
-                    if (keep.indexOf(colorIndex) < 0) {
-                        if (colorIndex + 1 < colors) {
-                            this._paletteArray[colorIndex] = this._paletteArray[colors - 1];
-                        }
-                        --colors;
-                    }
-                }
-                console.log("colors pruned: " + (this._paletteArray.length - colors));
-                this._paletteArray.length = colors;
-                /*
-                            for (var colorIndex = 0; colorIndex < this._paletteArray.length; colorIndex++) {
-                                if (keep.indexOf(colorIndex) < 0) {
-                                    this._paletteArray[colorIndex] = null;
+            /*
+                    public reduce(histogram : ColorHistogram, colors : number) {
+                        if (this._pointArray.length > colors) {
+                            var idxi32 = histogram.getImportanceSortedColorsIDXI32();
+            
+                            // quantize histogram to existing palette
+                            var keep = [], uniqueColors = 0, idx, pruned = false;
+            
+                            for (var i = 0, len = idxi32.length; i < len; i++) {
+                                // palette length reached, unset all remaining colors (sparse palette)
+                                if (uniqueColors >= colors) {
+                                    this.prunePal(keep);
+                                    pruned = true;
+                                    break;
+                                } else {
+                                    idx = this.nearestIndexByUint32(idxi32[i]);
+                                    if (keep.indexOf(idx) < 0) {
+                                        keep.push(idx);
+                                        uniqueColors++;
+                                    }
                                 }
                             }
-                
-                            // compact
-                            var compactedPaletteArray : Point[] = [];
-                
-                            for (var colorIndex = 0, i = 0; colorIndex < this._paletteArray.length; colorIndex++) {
-                                if (this._paletteArray[colorIndex]) {
-                                    compactedPaletteArray[i] = this._paletteArray[colorIndex];
-                                    i++;
-                                }
+            
+                            if (!pruned) {
+                                this.prunePal(keep);
                             }
-                
-                */
-                //this._paletteArray = compactedPaletteArray;
-                this._i32idx = {};
-            };
+                        }
+                    }
+            
+                    // TODO: check usage, not tested!
+                    public prunePal(keep : number[]) {
+                        var colors = this._pointArray.length;
+                        for (var colorIndex = colors - 1; colorIndex >= 0; colorIndex--) {
+                            if (keep.indexOf(colorIndex) < 0) {
+            
+                                if(colorIndex + 1 < colors) {
+                                    this._pointArray[ colorIndex ] = this._pointArray [ colors - 1 ];
+                                }
+                                --colors;
+                                //this._pointArray[colorIndex] = null;
+                            }
+                        }
+                        console.log("colors pruned: " + (this._pointArray.length - colors));
+                        this._pointArray.length = colors;
+                        this._i32idx = {};
+                    }
+            */
             // TODO: group very low lum and very high lum colors
             // TODO: pass custom sort order
             // TODO: sort criteria function should be placed to HueStats class
             Palette.prototype.sort = function () {
                 this._i32idx = {};
-                this._paletteArray.sort(function (a, b) {
+                this._pointArray.sort(function (a, b) {
+                    var alphaA = a.a, alphaB = b.a; // < 255 ? 0 : 1;
+                    //if(alphaB !== alphaA) return alphaA - alphaB;
                     var rgbA = a.rgba, rgbB = b.rgba;
                     var hslA = Utils.rgb2hsl(rgbA[0], rgbA[1], rgbA[2]), hslB = Utils.rgb2hsl(rgbB[0], rgbB[1], rgbB[2]);
                     // sort all grays + whites together
@@ -560,9 +690,13 @@ var IQ;
                     var hueDiff = hueB - hueA;
                     if (hueDiff)
                         return -hueDiff;
-                    var lumDiff = Utils.lumGroup(+hslB.l.toFixed(2)) - Utils.lumGroup(+hslA.l.toFixed(2));
-                    if (lumDiff)
-                        return -lumDiff;
+                    var lA = a.getLuminosity(true), lB = b.getLuminosity(true);
+                    if (lB - lA !== 0)
+                        return lB - lA;
+                    /*
+                                    var lumDiff = Utils.lumGroup(+hslB.l.toFixed(2)) - Utils.lumGroup(+hslA.l.toFixed(2));
+                                    if (lumDiff) return -lumDiff;
+                    */
                     var satDiff = Utils.satGroup(+hslB.s.toFixed(2)) - Utils.satGroup(+hslA.s.toFixed(2));
                     if (satDiff)
                         return -satDiff;
@@ -743,11 +877,11 @@ var IQ;
                         originalPoint.from(point);
                         var correctedPoint = IQ.Utils.Point.createByRGBA(Math.max(0, Math.min(255, point.r + error[0])), Math.max(0, Math.min(255, point.g + error[1])), Math.max(0, Math.min(255, point.b + error[2])), Math.max(0, Math.min(255, point.a + error[3])));
                         // Reduced pixel
-                        var palettePoint = palette.nearestColor(correctedPoint);
+                        var palettePoint = palette.getNearestColor(correctedPoint);
                         point.from(palettePoint);
                         // dithering strength
                         if (this._minColorDistance) {
-                            var dist = IQ.Utils.distEuclidean(point.rgba, palettePoint.rgba);
+                            var dist = IQ.Utils.distEuclidean(point, palettePoint);
                             if (dist < this._minColorDistance)
                                 continue;
                         }
@@ -916,7 +1050,7 @@ var IQ;
                         // Image pixel
                         var point = pointArray[idx];
                         // Reduced pixel
-                        point.from(palette.nearestColor(point));
+                        point.from(palette.getNearestColor(point));
                     }
                 }
                 return pointBuffer;
@@ -1256,7 +1390,7 @@ var IQ;
 /// <reference path='../../utils/point.ts' />
 /// <reference path='../../utils/palette.ts' />
 /// <reference path='../../utils/pointContainer.ts' />
-///<reference path="../../utils/colorHistogram.ts"/>
+///<reference path="colorHistogram.ts"/>
 /// <reference path='../../utils/utils.ts' />
 var IQ;
 (function (IQ) {
@@ -1280,49 +1414,37 @@ var IQ;
             };
             // reduces histogram to palette, remaps & memoizes reduced colors
             RgbQuant.prototype.quantize = function () {
-                var idxi32 = this._histogram.getImportanceSortedColorsIDXI32();
-                // build idxrgb from idxi32
-                var idxrgb = idxi32.map(function (i32) {
-                    return [
-                        (i32 & 0xff),
-                        (i32 >>> 8) & 0xff,
-                        (i32 >>> 16) & 0xff,
-                        (i32 >>> 24) & 0xff
-                    ];
-                });
-                this._buildPalette(idxrgb);
-                var palette = new IQ.Utils.Palette();
-                for (var pointIndex = 0, l = idxrgb.length; pointIndex < l; pointIndex++) {
-                    if (!idxrgb[pointIndex])
-                        continue;
-                    palette.add(IQ.Utils.Point.createByQuadruplet(idxrgb[pointIndex]));
-                }
+                var idxi32 = this._histogram.getImportanceSortedColorsIDXI32(), palette = this._buildPalette(idxi32);
                 palette.sort();
                 return palette;
             };
             // reduces similar colors from an importance-sorted Uint32 rgba array
-            RgbQuant.prototype._buildPalette = function (idxrgb) {
+            RgbQuant.prototype._buildPalette = function (idxi32) {
                 // reduce histogram to create initial palette
                 // build full rgb palette
-                var len = idxrgb.length, palLen = len, thold = this._initialDistance;
+                var palette = new IQ.Utils.Palette(), colorArray = palette.getPointContainer().getPointArray();
+                for (var i = 0; i < idxi32.length; i++) {
+                    colorArray.push(IQ.Utils.Point.createByUint32(idxi32[i]));
+                }
+                var len = colorArray.length, palLen = len, thold = this._initialDistance;
                 // palette already at or below desired length
                 if (palLen > this._colors) {
                     while (palLen > this._colors) {
                         var memDist = [];
                         // iterate palette
                         for (var i = 0; i < len; i++) {
-                            var pxi = idxrgb[i];
+                            var pxi = colorArray[i];
                             if (!pxi)
                                 continue;
                             for (var j = i + 1; j < len; j++) {
-                                var pxj = idxrgb[j];
+                                var pxj = colorArray[j];
                                 if (!pxj)
                                     continue;
                                 var dist = IQ.Utils.distEuclidean(pxi, pxj);
                                 if (dist < thold) {
                                     // store index,rgb,dist
                                     memDist.push([j, pxj, dist]);
-                                    idxrgb[j] = null;
+                                    colorArray[j] = null;
                                     palLen--;
                                 }
                             }
@@ -1341,17 +1463,397 @@ var IQ;
                         var k = 0;
                         while (palLen < this._colors && k < memDist.length) {
                             // re-inject rgb into final palette
-                            idxrgb[memDist[k][0]] = memDist[k][1];
+                            colorArray[memDist[k][0]] = memDist[k][1];
                             palLen++;
                             k++;
                         }
                     }
                 }
-                return idxrgb;
+                var colors = colorArray.length;
+                for (var colorIndex = colors - 1; colorIndex >= 0; colorIndex--) {
+                    if (!colorArray[colorIndex]) {
+                        if (colorIndex !== colors - 1) {
+                            colorArray[colorIndex] = colorArray[colors - 1];
+                        }
+                        --colors;
+                    }
+                }
+                colorArray.length = colors;
+                return palette;
             };
             return RgbQuant;
         })();
         Palette.RgbQuant = RgbQuant;
+    })(Palette = IQ.Palette || (IQ.Palette = {}));
+})(IQ || (IQ = {}));
+var IQ;
+(function (IQ) {
+    var Palette;
+    (function (Palette) {
+        var WuColorCube = (function () {
+            function WuColorCube() {
+            }
+            return WuColorCube;
+        })();
+        Palette.WuColorCube = WuColorCube;
+    })(Palette = IQ.Palette || (IQ.Palette = {}));
+})(IQ || (IQ = {}));
+///<reference path="cube.ts"/>
+var IQ;
+(function (IQ) {
+    var Palette;
+    (function (Palette) {
+        function createArray1D(dimension1) {
+            var a = [];
+            for (var k = 0; k < dimension1; k++) {
+                a[k] = 0;
+            }
+            return a;
+        }
+        function createArray3D(dimension1, dimension2, dimension3) {
+            var a = [];
+            for (var i = 0; i < dimension1; i++) {
+                a[i] = [];
+                for (var j = 0; j < dimension2; j++) {
+                    a[i][j] = [];
+                    for (var k = 0; k < dimension3; k++) {
+                        a[i][j][k] = 0;
+                    }
+                }
+            }
+            return a;
+        }
+        var WuQuant = (function () {
+            function WuQuant(colors) {
+                if (colors === void 0) { colors = 256; }
+                this._colors = colors;
+            }
+            // Converts the histogram to a series of moments.
+            WuQuant.prototype.CalculateMoments = function () {
+                var area = createArray1D(WuQuant.SideSize), areaRed = createArray1D(WuQuant.SideSize), areaGreen = createArray1D(WuQuant.SideSize), areaBlue = createArray1D(WuQuant.SideSize), area2 = createArray1D(WuQuant.SideSize);
+                for (var redIndex = 1; redIndex <= WuQuant.MaxSideIndex; ++redIndex) {
+                    for (var index = 0; index <= WuQuant.MaxSideIndex; ++index) {
+                        area[index] = 0;
+                        areaRed[index] = 0;
+                        areaGreen[index] = 0;
+                        areaBlue[index] = 0;
+                        area2[index] = 0;
+                    }
+                    for (var greenIndex = 1; greenIndex <= WuQuant.MaxSideIndex; ++greenIndex) {
+                        var line = 0, lineRed = 0, lineGreen = 0, lineBlue = 0, line2 = 0.0;
+                        for (var blueIndex = 1; blueIndex <= WuQuant.MaxSideIndex; ++blueIndex) {
+                            line += this.weights[redIndex][greenIndex][blueIndex];
+                            lineRed += this.momentsRed[redIndex][greenIndex][blueIndex];
+                            lineGreen += this.momentsGreen[redIndex][greenIndex][blueIndex];
+                            lineBlue += this.momentsBlue[redIndex][greenIndex][blueIndex];
+                            line2 += this.moments[redIndex][greenIndex][blueIndex];
+                            area[blueIndex] += line;
+                            areaRed[blueIndex] += lineRed;
+                            areaGreen[blueIndex] += lineGreen;
+                            areaBlue[blueIndex] += lineBlue;
+                            area2[blueIndex] += line2;
+                            this.weights[redIndex][greenIndex][blueIndex] = this.weights[redIndex - 1][greenIndex][blueIndex] + area[blueIndex];
+                            this.momentsRed[redIndex][greenIndex][blueIndex] = this.momentsRed[redIndex - 1][greenIndex][blueIndex] + areaRed[blueIndex];
+                            this.momentsGreen[redIndex][greenIndex][blueIndex] = this.momentsGreen[redIndex - 1][greenIndex][blueIndex] + areaGreen[blueIndex];
+                            this.momentsBlue[redIndex][greenIndex][blueIndex] = this.momentsBlue[redIndex - 1][greenIndex][blueIndex] + areaBlue[blueIndex];
+                            this.moments[redIndex][greenIndex][blueIndex] = this.moments[redIndex - 1][greenIndex][blueIndex] + area2[blueIndex];
+                        }
+                    }
+                }
+            };
+            // Computes the volume of the cube in a specific moment.
+            WuQuant.Volume = function (cube, moment) {
+                return moment[cube.RedMaximum][cube.GreenMaximum][cube.BlueMaximum] -
+                    moment[cube.RedMaximum][cube.GreenMaximum][cube.BlueMinimum] -
+                    moment[cube.RedMaximum][cube.GreenMinimum][cube.BlueMaximum] +
+                    moment[cube.RedMaximum][cube.GreenMinimum][cube.BlueMinimum] -
+                    moment[cube.RedMinimum][cube.GreenMaximum][cube.BlueMaximum] +
+                    moment[cube.RedMinimum][cube.GreenMaximum][cube.BlueMinimum] +
+                    moment[cube.RedMinimum][cube.GreenMinimum][cube.BlueMaximum] -
+                    moment[cube.RedMinimum][cube.GreenMinimum][cube.BlueMinimum];
+            };
+            // Computes the volume of the cube in a specific moment. For the floating-point values.
+            WuQuant.VolumeFloat = function (cube, moment) {
+                return moment[cube.RedMaximum][cube.GreenMaximum][cube.BlueMaximum] -
+                    moment[cube.RedMaximum][cube.GreenMaximum][cube.BlueMinimum] -
+                    moment[cube.RedMaximum][cube.GreenMinimum][cube.BlueMaximum] +
+                    moment[cube.RedMaximum][cube.GreenMinimum][cube.BlueMinimum] -
+                    moment[cube.RedMinimum][cube.GreenMaximum][cube.BlueMaximum] +
+                    moment[cube.RedMinimum][cube.GreenMaximum][cube.BlueMinimum] +
+                    moment[cube.RedMinimum][cube.GreenMinimum][cube.BlueMaximum] -
+                    moment[cube.RedMinimum][cube.GreenMinimum][cube.BlueMinimum];
+            };
+            // Splits the cube in given position, and color direction.
+            WuQuant.Top = function (cube, direction, position, moment) {
+                switch (direction) {
+                    case WuQuant.Red:
+                        return (moment[position][cube.GreenMaximum][cube.BlueMaximum] -
+                            moment[position][cube.GreenMaximum][cube.BlueMinimum] -
+                            moment[position][cube.GreenMinimum][cube.BlueMaximum] +
+                            moment[position][cube.GreenMinimum][cube.BlueMinimum]);
+                    case WuQuant.Green:
+                        return (moment[cube.RedMaximum][position][cube.BlueMaximum] -
+                            moment[cube.RedMaximum][position][cube.BlueMinimum] -
+                            moment[cube.RedMinimum][position][cube.BlueMaximum] +
+                            moment[cube.RedMinimum][position][cube.BlueMinimum]);
+                    case WuQuant.Blue:
+                        return (moment[cube.RedMaximum][cube.GreenMaximum][position] -
+                            moment[cube.RedMaximum][cube.GreenMinimum][position] -
+                            moment[cube.RedMinimum][cube.GreenMaximum][position] +
+                            moment[cube.RedMinimum][cube.GreenMinimum][position]);
+                    default:
+                        return 0;
+                }
+            };
+            // Splits the cube in a given color direction at its minimum.
+            WuQuant.Bottom = function (cube, direction, moment) {
+                switch (direction) {
+                    case WuQuant.Red:
+                        return (-moment[cube.RedMinimum][cube.GreenMaximum][cube.BlueMaximum] +
+                            moment[cube.RedMinimum][cube.GreenMaximum][cube.BlueMinimum] +
+                            moment[cube.RedMinimum][cube.GreenMinimum][cube.BlueMaximum] -
+                            moment[cube.RedMinimum][cube.GreenMinimum][cube.BlueMinimum]);
+                    case WuQuant.Green:
+                        return (-moment[cube.RedMaximum][cube.GreenMinimum][cube.BlueMaximum] +
+                            moment[cube.RedMaximum][cube.GreenMinimum][cube.BlueMinimum] +
+                            moment[cube.RedMinimum][cube.GreenMinimum][cube.BlueMaximum] -
+                            moment[cube.RedMinimum][cube.GreenMinimum][cube.BlueMinimum]);
+                    case WuQuant.Blue:
+                        return (-moment[cube.RedMaximum][cube.GreenMaximum][cube.BlueMinimum] +
+                            moment[cube.RedMaximum][cube.GreenMinimum][cube.BlueMinimum] +
+                            moment[cube.RedMinimum][cube.GreenMaximum][cube.BlueMinimum] -
+                            moment[cube.RedMinimum][cube.GreenMinimum][cube.BlueMinimum]);
+                    default:
+                        return 0;
+                }
+            };
+            // Calculates statistical variance for a given cube.
+            WuQuant.prototype.CalculateVariance = function (cube) {
+                var volumeRed = WuQuant.Volume(cube, this.momentsRed), volumeGreen = WuQuant.Volume(cube, this.momentsGreen), volumeBlue = WuQuant.Volume(cube, this.momentsBlue), volumeMoment = WuQuant.VolumeFloat(cube, this.moments), volumeWeight = WuQuant.Volume(cube, this.weights), distance = volumeRed * volumeRed + volumeGreen * volumeGreen + volumeBlue * volumeBlue;
+                return volumeMoment - (distance / volumeWeight);
+            };
+            //	Finds the optimal (maximal) position for the cut.
+            WuQuant.prototype.Maximize = function (cube, direction, first, last, /*IList<Int32>*/ cut, wholeRed, wholeGreen, wholeBlue, wholeWeight) {
+                var bottomRed = WuQuant.Bottom(cube, direction, this.momentsRed), bottomGreen = WuQuant.Bottom(cube, direction, this.momentsGreen), bottomBlue = WuQuant.Bottom(cube, direction, this.momentsBlue), bottomWeight = WuQuant.Bottom(cube, direction, this.weights), result = 0.0;
+                cut[0] = -1;
+                for (var position = first; position < last; ++position) {
+                    // determines the cube cut at a certain position
+                    var halfRed = bottomRed + WuQuant.Top(cube, direction, position, this.momentsRed), halfGreen = bottomGreen + WuQuant.Top(cube, direction, position, this.momentsGreen), halfBlue = bottomBlue + WuQuant.Top(cube, direction, position, this.momentsBlue), halfWeight = bottomWeight + WuQuant.Top(cube, direction, position, this.weights);
+                    // the cube cannot be cut at bottom (this would lead to empty cube)
+                    if (halfWeight != 0) {
+                        var halfDistance = halfRed * halfRed + halfGreen * halfGreen + halfBlue * halfBlue, temp = halfDistance / halfWeight;
+                        halfRed = wholeRed - halfRed;
+                        halfGreen = wholeGreen - halfGreen;
+                        halfBlue = wholeBlue - halfBlue;
+                        halfWeight = wholeWeight - halfWeight;
+                        if (halfWeight != 0) {
+                            halfDistance = halfRed * halfRed + halfGreen * halfGreen + halfBlue * halfBlue;
+                            temp += halfDistance / halfWeight;
+                            if (temp > result) {
+                                result = temp;
+                                cut[0] = position;
+                            }
+                        }
+                    }
+                }
+                return result;
+            };
+            // Cuts a cube with another one.
+            WuQuant.prototype.Cut = function (first, second) {
+                var direction, cutRed = [0], cutGreen = [0], cutBlue = [0], wholeRed = WuQuant.Volume(first, this.momentsRed), wholeGreen = WuQuant.Volume(first, this.momentsGreen), wholeBlue = WuQuant.Volume(first, this.momentsBlue), wholeWeight = WuQuant.Volume(first, this.weights), maxRed = this.Maximize(first, WuQuant.Red, first.RedMinimum + 1, first.RedMaximum, cutRed, wholeRed, wholeGreen, wholeBlue, wholeWeight), maxGreen = this.Maximize(first, WuQuant.Green, first.GreenMinimum + 1, first.GreenMaximum, cutGreen, wholeRed, wholeGreen, wholeBlue, wholeWeight), maxBlue = this.Maximize(first, WuQuant.Blue, first.BlueMinimum + 1, first.BlueMaximum, cutBlue, wholeRed, wholeGreen, wholeBlue, wholeWeight);
+                if ((maxRed >= maxGreen) && (maxRed >= maxBlue)) {
+                    direction = WuQuant.Red;
+                    // cannot split empty cube
+                    if (cutRed[0] < 0)
+                        return false;
+                }
+                else {
+                    if ((maxGreen >= maxRed) && (maxGreen >= maxBlue)) {
+                        direction = WuQuant.Green;
+                    }
+                    else {
+                        direction = WuQuant.Blue;
+                    }
+                }
+                second.RedMaximum = first.RedMaximum;
+                second.GreenMaximum = first.GreenMaximum;
+                second.BlueMaximum = first.BlueMaximum;
+                // cuts in a certain direction
+                switch (direction) {
+                    case WuQuant.Red:
+                        second.RedMinimum = first.RedMaximum = cutRed[0];
+                        second.GreenMinimum = first.GreenMinimum;
+                        second.BlueMinimum = first.BlueMinimum;
+                        break;
+                    case WuQuant.Green:
+                        second.GreenMinimum = first.GreenMaximum = cutGreen[0];
+                        second.RedMinimum = first.RedMinimum;
+                        second.BlueMinimum = first.BlueMinimum;
+                        break;
+                    case WuQuant.Blue:
+                        second.BlueMinimum = first.BlueMaximum = cutBlue[0];
+                        second.RedMinimum = first.RedMinimum;
+                        second.GreenMinimum = first.GreenMinimum;
+                        break;
+                }
+                // determines the volumes after cut
+                first.Volume = (first.RedMaximum - first.RedMinimum) * (first.GreenMaximum - first.GreenMinimum) * (first.BlueMaximum - first.BlueMinimum);
+                second.Volume = (second.RedMaximum - second.RedMinimum) * (second.GreenMaximum - second.GreenMinimum) * (second.BlueMaximum - second.BlueMinimum);
+                // the cut was successfull
+                return true;
+            };
+            // Marks all the tags with a given label.
+            WuQuant.Mark = function (cube, label, /*IList<Int32>*/ tag) {
+                for (var redIndex = cube.RedMinimum + 1; redIndex <= cube.RedMaximum; ++redIndex) {
+                    for (var greenIndex = cube.GreenMinimum + 1; greenIndex <= cube.GreenMaximum; ++greenIndex) {
+                        for (var blueIndex = cube.BlueMinimum + 1; blueIndex <= cube.BlueMaximum; ++blueIndex) {
+                            tag[(redIndex << 10) + (redIndex << 6) + redIndex + (greenIndex << 5) + greenIndex + blueIndex] = label;
+                        }
+                    }
+                }
+            };
+            WuQuant.prototype.sample = function (image) {
+                var _this = this;
+                // creates all the _cubes
+                this._cubes = [];
+                // initializes all the _cubes
+                for (var cubeIndex = 0; cubeIndex < WuQuant.MaxColor; cubeIndex++) {
+                    this._cubes[cubeIndex] = new Palette.WuColorCube();
+                }
+                // resets the reference minimums
+                this._cubes[0].RedMinimum = 0;
+                this._cubes[0].GreenMinimum = 0;
+                this._cubes[0].BlueMinimum = 0;
+                // resets the reference maximums
+                this._cubes[0].RedMaximum = WuQuant.MaxSideIndex;
+                this._cubes[0].GreenMaximum = WuQuant.MaxSideIndex;
+                this._cubes[0].BlueMaximum = WuQuant.MaxSideIndex;
+                this.weights = createArray3D(WuQuant.SideSize, WuQuant.SideSize, WuQuant.SideSize);
+                this.momentsRed = createArray3D(WuQuant.SideSize, WuQuant.SideSize, WuQuant.SideSize);
+                this.momentsGreen = createArray3D(WuQuant.SideSize, WuQuant.SideSize, WuQuant.SideSize);
+                this.momentsBlue = createArray3D(WuQuant.SideSize, WuQuant.SideSize, WuQuant.SideSize);
+                this.moments = createArray3D(WuQuant.SideSize, WuQuant.SideSize, WuQuant.SideSize);
+                this.table = [];
+                for (var tableIndex = 0; tableIndex < 256; ++tableIndex) {
+                    this.table[tableIndex] = tableIndex * tableIndex;
+                }
+                this.quantizedPixels = [];
+                this.pixels = [];
+                var pointArray = image.getPointArray();
+                pointArray.forEach(function (color) {
+                    _this.addColor(color);
+                });
+            };
+            WuQuant.prototype.addColor = function (color) {
+                var indexRed = (color.r >> 3) + 1, indexGreen = (color.g >> 3) + 1, indexBlue = (color.b >> 3) + 1;
+                this.weights[indexRed][indexGreen][indexBlue]++;
+                this.momentsRed[indexRed][indexGreen][indexBlue] += color.r;
+                this.momentsGreen[indexRed][indexGreen][indexBlue] += color.g;
+                this.momentsBlue[indexRed][indexGreen][indexBlue] += color.b;
+                this.moments[indexRed][indexGreen][indexBlue] += this.table[color.r] + this.table[color.g] + this.table[color.b];
+                this.quantizedPixels.push((indexRed << 10) + (indexRed << 6) + indexRed + (indexGreen << 5) + indexGreen + indexBlue);
+                this.pixels.push(color);
+            };
+            WuQuant.prototype.quantize = function () {
+                var l;
+                // preprocess the colors
+                this.CalculateMoments();
+                var next = 0, volumeVariance = createArray1D(WuQuant.MaxColor);
+                // processes the _cubes
+                for (var cubeIndex = 1; cubeIndex < this._colors; ++cubeIndex) {
+                    // if cut is possible; make it
+                    if (this.Cut(this._cubes[next], this._cubes[cubeIndex])) {
+                        volumeVariance[next] = this._cubes[next].Volume > 1 ? this.CalculateVariance(this._cubes[next]) : 0.0;
+                        volumeVariance[cubeIndex] = this._cubes[cubeIndex].Volume > 1 ? this.CalculateVariance(this._cubes[cubeIndex]) : 0.0;
+                    }
+                    else {
+                        // the cut was not possible, revert the index
+                        volumeVariance[next] = 0.0;
+                        cubeIndex--;
+                    }
+                    next = 0;
+                    var temp = volumeVariance[0];
+                    for (var index = 1; index <= cubeIndex; ++index) {
+                        if (typeof volumeVariance[index] !== "number")
+                            throw new Error("x");
+                        if (volumeVariance[index] > temp) {
+                            temp = volumeVariance[index];
+                            next = index;
+                        }
+                    }
+                    if (temp <= 0.0) {
+                        this._colors = cubeIndex + 1;
+                        break;
+                    }
+                }
+                var lookupRed = [], lookupGreen = [], lookupBlue = [];
+                // TODO: check, i think initializetion is not needed here!
+                this.tag = createArray1D(WuQuant.MaxVolume);
+                // precalculates lookup tables
+                for (var k = 0; k < this._colors; ++k) {
+                    WuQuant.Mark(this._cubes[k], k, this.tag);
+                    var weight = WuQuant.Volume(this._cubes[k], this.weights);
+                    if (weight > 0) {
+                        lookupRed[k] = (WuQuant.Volume(this._cubes[k], this.momentsRed) / weight) | 0;
+                        lookupGreen[k] = (WuQuant.Volume(this._cubes[k], this.momentsGreen) / weight) | 0;
+                        lookupBlue[k] = (WuQuant.Volume(this._cubes[k], this.momentsBlue) / weight) | 0;
+                    }
+                    else {
+                        lookupRed[k] = 0;
+                        lookupGreen[k] = 0;
+                        lookupBlue[k] = 0;
+                    }
+                }
+                // copies the per pixel tags
+                l = this.quantizedPixels.length;
+                for (var index = 0; index < l; ++index) {
+                    this.quantizedPixels[index] = this.tag[this.quantizedPixels[index]];
+                }
+                this.reds = createArray1D(this._colors + 1);
+                this.greens = createArray1D(this._colors + 1);
+                this.blues = createArray1D(this._colors + 1);
+                this.sums = createArray1D(this._colors + 1);
+                // scans and adds colors
+                l = this.pixels.length;
+                for (var index = 0; index < l; index++) {
+                    var color = this.pixels[index];
+                    var match = this.quantizedPixels[index], bestMatch = match, bestDistance = 100000000;
+                    for (var lookup = 0; lookup < this._colors; lookup++) {
+                        var foundRed = lookupRed[lookup], foundGreen = lookupGreen[lookup], foundBlue = lookupBlue[lookup], deltaRed = color.r - foundRed, deltaGreen = color.g - foundGreen, deltaBlue = color.b - foundBlue, distance = deltaRed * deltaRed + deltaGreen * deltaGreen + deltaBlue * deltaBlue;
+                        if (distance < bestDistance) {
+                            bestDistance = distance;
+                            bestMatch = lookup;
+                        }
+                    }
+                    this.reds[bestMatch] += color.r;
+                    this.greens[bestMatch] += color.g;
+                    this.blues[bestMatch] += color.b;
+                    this.sums[bestMatch]++;
+                }
+                var palette = new IQ.Utils.Palette();
+                // generates palette
+                for (var paletteIndex = 0; paletteIndex < this._colors; paletteIndex++) {
+                    if (this.sums[paletteIndex] > 0) {
+                        this.reds[paletteIndex] = (this.reds[paletteIndex] / this.sums[paletteIndex]) | 0;
+                        this.greens[paletteIndex] = (this.greens[paletteIndex] / this.sums[paletteIndex]) | 0;
+                        this.blues[paletteIndex] = (this.blues[paletteIndex] / this.sums[paletteIndex]) | 0;
+                    }
+                    var color = IQ.Utils.Point.createByRGBA(this.reds[paletteIndex], this.greens[paletteIndex], this.blues[paletteIndex], 255);
+                    palette.add(color);
+                }
+                palette.sort();
+                return palette;
+            };
+            WuQuant.MaxColor = 512;
+            WuQuant.Red = 2;
+            WuQuant.Green = 1;
+            WuQuant.Blue = 0;
+            WuQuant.SideSize = 33;
+            WuQuant.MaxSideIndex = 32;
+            WuQuant.MaxVolume = WuQuant.SideSize * WuQuant.SideSize * WuQuant.SideSize;
+            return WuQuant;
+        })();
+        Palette.WuQuant = WuQuant;
     })(Palette = IQ.Palette || (IQ.Palette = {}));
 })(IQ || (IQ = {}));
 // based on https://github.com/rhys-e/structural-similarity
@@ -1443,6 +1945,7 @@ var IQ;
 /// <reference path="palette/ipaletteQuantizer.ts"/>
 /// <reference path="palette/neuquant/neuquant.ts"/>
 /// <reference path="palette/rgbquant/rgbquant.ts"/>
+/// <reference path="palette/wu/wuQuant.ts"/>
 /// <reference path="quality/ssim.ts"/>
 /// <reference path='utils/utils.ts' />
 //# sourceMappingURL=iq.js.map
