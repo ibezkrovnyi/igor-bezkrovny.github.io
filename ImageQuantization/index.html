@@ -9,14 +9,28 @@
 	<script src="js/main.js"></script>
 	<script src="js/iq.js"></script>
 </head>
-<body onload="APP.main()" onclick="APP.onClick(event)" onmousedown="APP.onMouse(true,event)" onmouseup="APP.onMouse(false,event)">
+<body onload="APP.main()" onclick="APP.onClick(event)" onmousedown="APP.onMouse(true,event)" onmouseup="APP.onMouse(false,event)" ontouchstart="APP.onMouse(true,event)" ontouchend="APP.onMouse(false,event)">
 	<div>
-		<div class="box" style="max-width: 450px; min-height : 800px">
+		<div class="box" style="max-width: 400px; min-height : 800px">
 			<h4>Options</h4>
 			<div class="options">
 				<div class="option">
+					Initial Colors (1..65536 and even more): <input id="initialColors" type="text" value="256" onchange="APP.onConfigChanged()" oninput="APP.onConfigChanged()">
+				</div>
+				<div class="option">
 					Colors (1..65536 and even more): <input id="colors" type="text" value="256" onchange="APP.onConfigChanged()" oninput="APP.onConfigChanged()">
-					<input type="range" onchange="APP.onColorSliderChange()" oninput="document.getElementById('colors').value=this.value" id="colors-slider" min="2" value="256" max="512" step="2">
+					<input type="range" onchange="APP.onColorSliderChange()" oninput="document.getElementById('colors').value=this.value" id="colors-slider"
+						   value="256" min="2" max="128" step="2" list=colorRangeValuesList>
+					<datalist id=colorRangeValuesList>
+						<option>2</option>
+						<option>16</option>
+						<option>64</option>
+						<option>128</option>
+						<option>256</option>
+						<option>512</option>
+						<option>1024</option>
+						<option>16384</option>
+					</datalist>
 				</div>
 				<div class="option">
 					Palette Quantizer: <select id="paletteQuantizer" onchange="APP.onConfigChanged()">
@@ -39,7 +53,9 @@
 				</select>                <!--<label>dithSerp: <input id="dithSerp" type="checkbox"></label>,                minHueCols: <input id="minHueCols" type="text" value="0" class="autosize">,-->
 				</div>
 			</div>
+		</div>
 
+		<div class="box">
 			<h4 style="border-top: 1px solid silver; margin-top: 5px;">Palette</h4>
 			<div id="palette-container"></div>
 		</div>

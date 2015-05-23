@@ -32,7 +32,7 @@ var APP;
 		if(target && target.className === "th") {
 			if(currentImage !== target) {
 				currentImage = target;
-				exports.process(currentImage, config.colors, config.paletteQuantizer, config.imageDithering);
+				exports.process(currentImage, config.colors, config.initialColors, config.paletteQuantizer, config.imageDithering);
 			}
 		}
 	};
@@ -68,7 +68,7 @@ var APP;
 			if(currentImage) {
 				lastChangeTime = null;
 				config = getConfig();
-				exports.process(currentImage, config.colors, config.paletteQuantizer, config.imageDithering);
+				exports.process(currentImage, config.colors, config.initialColors, config.paletteQuantizer, config.imageDithering);
 			}
 		}
 	}, 50);
@@ -81,19 +81,21 @@ var APP;
 			document.getElementById("colors").value = colors;
 
 			config = getConfig();
-			exports.process(currentImage, config.colors, config.paletteQuantizer, config.imageDithering);
+			exports.process(currentImage, config.colors, config.initialColors, config.paletteQuantizer, config.imageDithering);
 		}
 	};
 
 	function getConfig() {
 		var optionColors = document.getElementById("colors");
+		var optionInitialColors = document.getElementById("initialColors");
 		var optionPaletteQuantizer = document.getElementById("paletteQuantizer");
 		var optionImageDithering = document.getElementById("imageDithering");
 
 		return {
 			colors : parseInt(optionColors.value, 10),
 			paletteQuantizer : optionPaletteQuantizer.value,
-			imageDithering : parseInt(optionImageDithering.value, 10)
+			imageDithering : parseInt(optionImageDithering.value, 10),
+			initialColors :  parseInt(optionInitialColors.value, 10)
 		}
 	}
 

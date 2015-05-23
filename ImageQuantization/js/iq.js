@@ -109,213 +109,6 @@ var IQ;
         Utils.Point = Point;
     })(Utils = IQ.Utils || (IQ.Utils = {}));
 })(IQ || (IQ = {}));
-/// <reference path='./point.ts' />
-// TODO: make paletteArray via pointBuffer, so, export will be available via pointBuffer.exportXXX
-var IQ;
-(function (IQ) {
-    var Utils;
-    (function (Utils) {
-        var hueGroups = 10;
-        var Palette = (function () {
-            function Palette() {
-                this._paletteArray = [];
-                this._i32idx = {};
-            }
-            // TOTRY: use HUSL - http://boronine.com/husl/
-            Palette.prototype.nearestColor = function (point) {
-                return this._paletteArray[this.nearestIndex_Point(point) | 0];
-            };
-            // TOTRY: use HUSL - http://boronine.com/husl/
-            Palette.prototype.nearestIndex = function (i32) {
-                var idx = this._nearestPointFromCache("" + i32);
-                if (idx >= 0)
-                    return idx;
-                var min = 1000, rgb = [
-                    (i32 & 0xff),
-                    (i32 >>> 8) & 0xff,
-                    (i32 >>> 16) & 0xff,
-                    (i32 >>> 24) & 0xff
-                ], len = this._paletteArray.length;
-                idx = 0;
-                for (var i = 0; i < len; i++) {
-                    var dist = Utils.distEuclidean(rgb, this._paletteArray[i].rgba);
-                    if (dist < min) {
-                        min = dist;
-                        idx = i;
-                    }
-                }
-                this._i32idx[i32] = idx;
-                return idx;
-            };
-            Palette.prototype._nearestPointFromCache = function (key) {
-                return typeof this._i32idx[key] === "number" ? this._i32idx[key] : -1;
-            };
-            Palette.prototype.nearestIndex_Point = function (point) {
-                var idx = this._nearestPointFromCache("" + point.uint32);
-                if (idx >= 0)
-                    return idx;
-                var minimalDistance = 1000.0;
-                for (var idx = 0, i = 0, l = this._paletteArray.length; i < l; i++) {
-                    var distance = Utils.distEuclidean(point.rgba, this._paletteArray[i].rgba);
-                    if (distance < minimalDistance) {
-                        minimalDistance = distance;
-                        idx = i;
-                    }
-                }
-                this._i32idx[point.uint32] = idx;
-                return idx;
-            };
-            // TODO: check usage, not tested!
-            Palette.prototype.prunePal = function (keep) {
-                var point;
-                for (var j = 0; j < this._paletteArray.length; j++) {
-                    if (keep.indexOf(j) < 0) {
-                        this._paletteArray[j] = null;
-                    }
-                }
-                // compact
-                var compactedPaletteArray = [];
-                for (var j = 0, i = 0; j < this._paletteArray.length; j++) {
-                    if (this._paletteArray[j]) {
-                        compactedPaletteArray[i] = this._paletteArray[j];
-                        i++;
-                    }
-                }
-                this._paletteArray = compactedPaletteArray;
-                this._i32idx = {};
-            };
-            // TODO: group very low lum and very high lum colors
-            // TODO: pass custom sort order
-            // TODO: sort criteria function should be placed to HueStats class
-            Palette.prototype.sort = function () {
-                this._i32idx = {};
-                this._paletteArray.sort(function (a, b) {
-                    var rgbA = a.rgba, rgbB = b.rgba;
-                    var hslA = Utils.rgb2hsl(rgbA[0], rgbA[1], rgbA[2]), hslB = Utils.rgb2hsl(rgbB[0], rgbB[1], rgbB[2]);
-                    // sort all grays + whites together
-                    var hueA = (rgbA[0] == rgbA[1] && rgbA[1] == rgbA[2]) ? 0 : 1 + Utils.hueGroup(hslA.h, hueGroups);
-                    var hueB = (rgbB[0] == rgbB[1] && rgbB[1] == rgbB[2]) ? 0 : 1 + Utils.hueGroup(hslB.h, hueGroups);
-                    var hueDiff = hueB - hueA;
-                    if (hueDiff)
-                        return -hueDiff;
-                    var lumDiff = Utils.lumGroup(+hslB.l.toFixed(2)) - Utils.lumGroup(+hslA.l.toFixed(2));
-                    if (lumDiff)
-                        return -lumDiff;
-                    var satDiff = Utils.satGroup(+hslB.s.toFixed(2)) - Utils.satGroup(+hslA.s.toFixed(2));
-                    if (satDiff)
-                        return -satDiff;
-                });
-            };
-            return Palette;
-        })();
-        Utils.Palette = Palette;
-    })(Utils = IQ.Utils || (IQ.Utils = {}));
-})(IQ || (IQ = {}));
-/// <reference path='./point.ts' />
-var IQ;
-(function (IQ) {
-    var Utils;
-    (function (Utils) {
-        // TODO: http://www.javascripture.com/Uint8ClampedArray
-        // TODO: Uint8ClampedArray is better than Uint8Array to avoid checking for out of bounds
-        // TODO: check performance (it seems identical) http://jsperf.com/uint8-typed-array-vs-imagedata/4
-        /*
-    
-         TODO: Examples:
-    
-         var x = new Uint8ClampedArray([17, -45.3]);
-         console.log(x[0]); // 17
-         console.log(x[1]); // 0
-         console.log(x.length); // 2
-    
-         var x = new Uint8Array([17, -45.3]);
-         console.log(x[0]); // 17
-         console.log(x[1]); // 211
-         console.log(x.length); // 2
-    
-         */
-        var PointBuffer = (function () {
-            function PointBuffer() {
-            }
-            PointBuffer.prototype.getWidth = function () {
-                return this._width;
-            };
-            PointBuffer.prototype.getHeight = function () {
-                return this._height;
-            };
-            PointBuffer.prototype.getPointArray = function () {
-                return this._pointArray;
-            };
-            PointBuffer.prototype.clone = function () {
-                var clone = new PointBuffer();
-                clone._width = this._width;
-                clone._height = this._height;
-                clone._pointArray = [];
-                for (var i = 0, l = this._pointArray.length; i < l; i++) {
-                    clone._pointArray[i] = Utils.Point.createByUint32(this._pointArray[i].uint32 | 0); // "| 0" is added for v8 optimization
-                }
-                return clone;
-            };
-            PointBuffer.prototype.importHTMLImageElement = function (img) {
-                var width = img.naturalWidth, height = img.naturalHeight;
-                var canvas = document.createElement("canvas");
-                canvas.width = width;
-                canvas.height = height;
-                var ctx = canvas.getContext("2d");
-                ctx.drawImage(img, 0, 0, width, height, 0, 0, width, height);
-                this.importHTMLCanvasElement(canvas);
-            };
-            PointBuffer.prototype.importHTMLCanvasElement = function (canvas) {
-                var width = canvas.width, height = canvas.height;
-                var ctx = canvas.getContext("2d"), imgData = ctx.getImageData(0, 0, width, height);
-                this.importImageData(imgData);
-            };
-            PointBuffer.prototype.importNodeCanvas = function (canvas) {
-                this.importHTMLCanvasElement(canvas);
-            };
-            PointBuffer.prototype.importImageData = function (imageData) {
-                var width = imageData.width, height = imageData.height;
-                this.importCanvasPixelArray(imageData.data, width, height);
-                /*
-                            var buf8;
-                            if (Utils.typeOf(imageData.data) == "CanvasPixelArray")
-                                buf8 = new Uint8Array(imageData.data);
-                            else
-                                buf8 = imageData.data;
-                
-                            this.importUint32Array(new Uint32Array(buf8.buffer), width, height);
-                */
-            };
-            PointBuffer.prototype.importArray = function (data, width, height) {
-                var uint8array = new Uint8Array(data);
-                this.importUint32Array(new Uint32Array(uint8array.buffer), width, height);
-            };
-            PointBuffer.prototype.importCanvasPixelArray = function (data, width, height) {
-                this.importArray(data, width, height);
-            };
-            PointBuffer.prototype.importUint32Array = function (uint32array, width, height) {
-                this._width = width;
-                this._height = height;
-                this._pointArray = []; //new Array(uint32array.length);
-                for (var i = 0, l = uint32array.length; i < l; i++) {
-                    this._pointArray[i] = Utils.Point.createByUint32(uint32array[i] | 0); // "| 0" is added for v8 optimization
-                }
-            };
-            PointBuffer.prototype.exportUint32Array = function () {
-                var l = this._pointArray.length, uint32Array = new Uint32Array(l);
-                for (var i = 0; i < l; i++) {
-                    uint32Array[i] = this._pointArray[i].uint32;
-                }
-                return uint32Array;
-            };
-            PointBuffer.prototype.exportUint8Array = function () {
-                return new Uint8Array(this.exportUint32Array().buffer);
-            };
-            return PointBuffer;
-        })();
-        Utils.PointBuffer = PointBuffer;
-    })(Utils = IQ.Utils || (IQ.Utils = {}));
-})(IQ || (IQ = {}));
 var IQ;
 (function (IQ) {
     var Utils;
@@ -454,71 +247,445 @@ var IQ;
         var euclMax = Math.sqrt(Pr * rd * rd + Pg * gd * gd + Pb * bd * bd + Pa * ad * ad);
         // perceptual Euclidean color distance
         function distEuclidean(rgb0, rgb1) {
-            var rd = rgb1[0] - rgb0[0], gd = rgb1[1] - rgb0[1], bd = rgb1[2] - rgb0[2], ad = rgb1[3] - rgb0[3];
+            var rd = rgb1[0] - rgb0[0], gd = rgb1[1] - rgb0[1], bd = rgb1[2] - rgb0[2], ad = (rgb1[3] - rgb0[3]);
             return Math.sqrt(Pr * rd * rd + Pg * gd * gd + Pb * bd * bd + Pa * ad * ad) / euclMax;
         }
         Utils.distEuclidean = distEuclidean;
     })(Utils = IQ.Utils || (IQ.Utils = {}));
 })(IQ || (IQ = {}));
-/// <reference path='./../../utils/utils.ts' />
+/// <reference path='./utils.ts' />
 var IQ;
 (function (IQ) {
-    var HueGroup = (function () {
-        function HueGroup() {
-            this.num = 0;
-            this.cols = [];
-        }
-        return HueGroup;
-    })();
-    var HueStatistics = (function () {
-        function HueStatistics(numGroups, minCols) {
-            this._numGroups = numGroups;
-            this._minCols = minCols;
-            this._stats = [];
-            for (var i = 0; i <= numGroups; i++) {
-                this._stats[i] = new HueGroup();
+    var Utils;
+    (function (Utils) {
+        var HueGroup = (function () {
+            function HueGroup() {
+                this.num = 0;
+                this.cols = [];
             }
-            this._groupsFull = 0;
-        }
-        HueStatistics.prototype.check = function (i32) {
-            if (this._groupsFull == this._numGroups + 1) {
-                this.check = function () {
-                };
+            return HueGroup;
+        })();
+        var HueStatistics = (function () {
+            function HueStatistics(numGroups, minCols) {
+                this._numGroups = numGroups;
+                this._minCols = minCols;
+                this._stats = [];
+                for (var i = 0; i <= numGroups; i++) {
+                    this._stats[i] = new HueGroup();
+                }
+                this._groupsFull = 0;
             }
-            var r = (i32 & 0xff), g = (i32 >>> 8) & 0xff, b = (i32 >>> 16) & 0xff, a = (i32 >>> 24) & 0xff, hg = (r == g && g == b) ? 0 : 1 + IQ.Utils.hueGroup(IQ.Utils.rgb2hsl(r, g, b).h, this._numGroups), gr = this._stats[hg], min = this._minCols;
-            gr.num++;
-            if (gr.num > min)
-                return;
-            if (gr.num == min)
-                this._groupsFull++;
-            if (gr.num <= min)
-                this._stats[hg].cols.push(i32);
-        };
-        HueStatistics.prototype.inject = function (histG) {
-            for (var i = 0; i <= this._numGroups; i++) {
-                if (this._stats[i].num <= this._minCols) {
-                    switch (IQ.Utils.typeOf(histG)) {
-                        case "Array":
-                            this._stats[i].cols.forEach(function (col) {
-                                if (histG.indexOf(col) == -1)
-                                    histG.push(col);
-                            });
-                            break;
-                        case "Object":
-                            this._stats[i].cols.forEach(function (col) {
-                                if (!histG[col])
-                                    histG[col] = 1;
-                                else
-                                    histG[col]++;
-                            });
-                            break;
+            HueStatistics.prototype.check = function (i32) {
+                if (this._groupsFull == this._numGroups + 1) {
+                    this.check = function () {
+                    };
+                }
+                var r = (i32 & 0xff), g = (i32 >>> 8) & 0xff, b = (i32 >>> 16) & 0xff, a = (i32 >>> 24) & 0xff, hg = (r == g && g == b) ? 0 : 1 + Utils.hueGroup(Utils.rgb2hsl(r, g, b).h, this._numGroups), gr = this._stats[hg], min = this._minCols;
+                gr.num++;
+                if (gr.num > min)
+                    return;
+                if (gr.num == min)
+                    this._groupsFull++;
+                if (gr.num <= min)
+                    this._stats[hg].cols.push(i32);
+            };
+            HueStatistics.prototype.inject = function (histG) {
+                for (var i = 0; i <= this._numGroups; i++) {
+                    if (this._stats[i].num <= this._minCols) {
+                        switch (Utils.typeOf(histG)) {
+                            case "Array":
+                                this._stats[i].cols.forEach(function (col) {
+                                    if (histG.indexOf(col) == -1)
+                                        histG.push(col);
+                                });
+                                break;
+                            case "Object":
+                                this._stats[i].cols.forEach(function (col) {
+                                    if (!histG[col])
+                                        histG[col] = 1;
+                                    else
+                                        histG[col]++;
+                                });
+                                break;
+                        }
                     }
                 }
+            };
+            return HueStatistics;
+        })();
+        Utils.HueStatistics = HueStatistics;
+    })(Utils = IQ.Utils || (IQ.Utils = {}));
+})(IQ || (IQ = {}));
+/// <reference path='hueStatistics.ts' />
+var IQ;
+(function (IQ) {
+    var Utils;
+    (function (Utils) {
+        var ColorHistogram = (function () {
+            function ColorHistogram(method, colors) {
+                // 1 = by global population, 2 = subregion population threshold
+                this._method = method;
+                // if > 0, enables hues stats and min-color retention per group
+                this._minHueCols = colors << 2; //opts.minHueCols || 0;
+                // # of highest-frequency colors to start with for palette reduction
+                this._initColors = colors << 2;
+                // HueStatistics instance
+                this._hueStats = new Utils.HueStatistics(ColorHistogram._hueGroups, this._minHueCols);
+                this._histogram = {};
             }
-        };
-        return HueStatistics;
-    })();
-    IQ.HueStatistics = HueStatistics;
+            ColorHistogram.prototype.sample = function (image) {
+                switch (this._method) {
+                    case 1:
+                        this._colorStats1D(image);
+                        break;
+                    case 2:
+                        this._colorStats2D(image);
+                        break;
+                }
+            };
+            ColorHistogram.prototype.getImportanceSortedColorsIDXI32 = function () {
+                var sorted = Utils.sortedHashKeys(this._histogram, true);
+                if (sorted.length == 0) {
+                    return null;
+                }
+                switch (this._method) {
+                    case 1:
+                        var initialColorsLimit = Math.min(sorted.length, this._initColors), last = sorted[initialColorsLimit - 1], freq = this._histogram[last];
+                        var idxi32 = sorted.slice(0, initialColorsLimit);
+                        // add any cut off colors with same freq as last
+                        var pos = initialColorsLimit, len = sorted.length;
+                        while (pos < len && this._histogram[sorted[pos]] == freq)
+                            idxi32.push(sorted[pos++]);
+                        // inject min huegroup colors
+                        this._hueStats.inject(idxi32);
+                        break;
+                    case 2:
+                        var idxi32 = sorted;
+                        break;
+                }
+                // int32-ify values
+                idxi32 = idxi32.map(function (v) {
+                    return +v;
+                });
+                return idxi32;
+            };
+            // global top-population
+            ColorHistogram.prototype._colorStats1D = function (pointBuffer) {
+                var histG = this._histogram, pointArray = pointBuffer.getPointArray(), len = pointArray.length;
+                for (var i = 0; i < len; i++) {
+                    var col = pointArray[i].uint32;
+                    // collect hue stats
+                    this._hueStats.check(col);
+                    if (col in histG)
+                        histG[col]++;
+                    else
+                        histG[col] = 1;
+                }
+            };
+            // population threshold within subregions
+            // FIXME: this can over-reduce (few/no colors same?), need a way to keep
+            // important colors that dont ever reach local thresholds (gradients?)
+            ColorHistogram.prototype._colorStats2D = function (pointBuffer) {
+                var width = pointBuffer.getWidth(), height = pointBuffer.getHeight(), pointArray = pointBuffer.getPointArray();
+                var boxW = ColorHistogram._boxSize[0], boxH = ColorHistogram._boxSize[1], area = boxW * boxH, boxes = Utils.makeBoxes(width, height, boxW, boxH), histG = this._histogram;
+                boxes.forEach(function (box) {
+                    var effc = Math.max(Math.round((box.w * box.h) / area) * ColorHistogram._boxPixels, 2), histL = {}, col;
+                    this._iterBox(box, width, function (i) {
+                        col = pointArray[i].uint32;
+                        // collect hue stats
+                        this._hueStats.check(col);
+                        if (col in histG)
+                            histG[col]++;
+                        else if (col in histL) {
+                            if (++histL[col] >= effc)
+                                histG[col] = histL[col];
+                        }
+                        else
+                            histL[col] = 1;
+                    });
+                }, this);
+                // inject min huegroup colors
+                this._hueStats.inject(histG);
+            };
+            // iterates @bbox within a parent rect of width @wid; calls @fn, passing index within parent
+            ColorHistogram.prototype._iterBox = function (bbox, wid, fn) {
+                var b = bbox, i0 = b.y * wid + b.x, i1 = (b.y + b.h - 1) * wid + (b.x + b.w - 1), cnt = 0, incr = wid - b.w + 1, i = i0;
+                do {
+                    fn.call(this, i);
+                    i += (++cnt % b.w == 0) ? incr : 1;
+                } while (i <= i1);
+            };
+            ColorHistogram._boxSize = [64, 64];
+            ColorHistogram._boxPixels = 2;
+            ColorHistogram._hueGroups = 10;
+            return ColorHistogram;
+        })();
+        Utils.ColorHistogram = ColorHistogram;
+    })(Utils = IQ.Utils || (IQ.Utils = {}));
+})(IQ || (IQ = {}));
+/// <reference path='point.ts' />
+///<reference path="colorHistogram.ts"/>
+// TODO: make paletteArray via pointBuffer, so, export will be available via pointBuffer.exportXXX
+var IQ;
+(function (IQ) {
+    var Utils;
+    (function (Utils) {
+        var hueGroups = 10;
+        var Palette = (function () {
+            function Palette() {
+                this._paletteArray = [];
+                this._i32idx = {};
+                this._pointContainer = new Utils.PointContainer();
+                this._pointContainer.setHeight(1);
+                this._paletteArray = this._pointContainer.getPointArray();
+            }
+            Palette.prototype.add = function (color) {
+                this._paletteArray.push(color);
+                this._pointContainer.setWidth(this._paletteArray.length);
+            };
+            // TOTRY: use HUSL - http://boronine.com/husl/
+            Palette.prototype.nearestColor = function (point) {
+                return this._paletteArray[this.nearestIndex_Point(point) | 0];
+            };
+            // TOTRY: use HUSL - http://boronine.com/husl/
+            Palette.prototype.nearestIndex = function (i32) {
+                var idx = this._nearestPointFromCache("" + i32);
+                if (idx >= 0)
+                    return idx;
+                var min = 1000, rgb = [
+                    (i32 & 0xff),
+                    (i32 >>> 8) & 0xff,
+                    (i32 >>> 16) & 0xff,
+                    (i32 >>> 24) & 0xff
+                ], len = this._paletteArray.length;
+                idx = 0;
+                for (var i = 0; i < len; i++) {
+                    var dist = Utils.distEuclidean(rgb, this._paletteArray[i].rgba);
+                    if (dist < min) {
+                        min = dist;
+                        idx = i;
+                    }
+                }
+                this._i32idx[i32] = idx;
+                return idx;
+            };
+            Palette.prototype._nearestPointFromCache = function (key) {
+                return typeof this._i32idx[key] === "number" ? this._i32idx[key] : -1;
+            };
+            Palette.prototype.nearestIndex_Point = function (point) {
+                var idx = this._nearestPointFromCache("" + point.uint32);
+                if (idx >= 0)
+                    return idx;
+                var minimalDistance = 1000.0;
+                for (var idx = 0, i = 0, l = this._paletteArray.length; i < l; i++) {
+                    var distance = Utils.distEuclidean(point.rgba, this._paletteArray[i].rgba);
+                    if (distance < minimalDistance) {
+                        minimalDistance = distance;
+                        idx = i;
+                    }
+                }
+                this._i32idx[point.uint32] = idx;
+                return idx;
+            };
+            Palette.prototype.reduce = function (histogram, colors) {
+                if (this._paletteArray.length > colors) {
+                    var idxi32 = histogram.getImportanceSortedColorsIDXI32();
+                    // quantize histogram to existing palette
+                    var keep = [], uniqueColors = 0, idx, pruned = false;
+                    for (var i = 0, len = idxi32.length; i < len; i++) {
+                        // palette length reached, unset all remaining colors (sparse palette)
+                        if (uniqueColors >= colors) {
+                            this.prunePal(keep);
+                            pruned = true;
+                            break;
+                        }
+                        else {
+                            idx = this.nearestIndex(idxi32[i]);
+                            if (keep.indexOf(idx) < 0) {
+                                keep.push(idx);
+                                uniqueColors++;
+                            }
+                        }
+                    }
+                    if (!pruned) {
+                        this.prunePal(keep);
+                    }
+                }
+            };
+            // TODO: check usage, not tested!
+            Palette.prototype.prunePal = function (keep) {
+                var colors = this._paletteArray.length;
+                for (var colorIndex = colors - 1; colorIndex >= 0; colorIndex--) {
+                    if (keep.indexOf(colorIndex) < 0) {
+                        if (colorIndex + 1 < colors) {
+                            this._paletteArray[colorIndex] = this._paletteArray[colors - 1];
+                        }
+                        --colors;
+                    }
+                }
+                console.log("colors pruned: " + (this._paletteArray.length - colors));
+                this._paletteArray.length = colors;
+                /*
+                            for (var colorIndex = 0; colorIndex < this._paletteArray.length; colorIndex++) {
+                                if (keep.indexOf(colorIndex) < 0) {
+                                    this._paletteArray[colorIndex] = null;
+                                }
+                            }
+                
+                            // compact
+                            var compactedPaletteArray : Point[] = [];
+                
+                            for (var colorIndex = 0, i = 0; colorIndex < this._paletteArray.length; colorIndex++) {
+                                if (this._paletteArray[colorIndex]) {
+                                    compactedPaletteArray[i] = this._paletteArray[colorIndex];
+                                    i++;
+                                }
+                            }
+                
+                */
+                //this._paletteArray = compactedPaletteArray;
+                this._i32idx = {};
+            };
+            // TODO: group very low lum and very high lum colors
+            // TODO: pass custom sort order
+            // TODO: sort criteria function should be placed to HueStats class
+            Palette.prototype.sort = function () {
+                this._i32idx = {};
+                this._paletteArray.sort(function (a, b) {
+                    var rgbA = a.rgba, rgbB = b.rgba;
+                    var hslA = Utils.rgb2hsl(rgbA[0], rgbA[1], rgbA[2]), hslB = Utils.rgb2hsl(rgbB[0], rgbB[1], rgbB[2]);
+                    // sort all grays + whites together
+                    var hueA = (rgbA[0] == rgbA[1] && rgbA[1] == rgbA[2]) ? 0 : 1 + Utils.hueGroup(hslA.h, hueGroups);
+                    var hueB = (rgbB[0] == rgbB[1] && rgbB[1] == rgbB[2]) ? 0 : 1 + Utils.hueGroup(hslB.h, hueGroups);
+                    var hueDiff = hueB - hueA;
+                    if (hueDiff)
+                        return -hueDiff;
+                    var lumDiff = Utils.lumGroup(+hslB.l.toFixed(2)) - Utils.lumGroup(+hslA.l.toFixed(2));
+                    if (lumDiff)
+                        return -lumDiff;
+                    var satDiff = Utils.satGroup(+hslB.s.toFixed(2)) - Utils.satGroup(+hslA.s.toFixed(2));
+                    if (satDiff)
+                        return -satDiff;
+                });
+            };
+            return Palette;
+        })();
+        Utils.Palette = Palette;
+    })(Utils = IQ.Utils || (IQ.Utils = {}));
+})(IQ || (IQ = {}));
+/// <reference path='./point.ts' />
+var IQ;
+(function (IQ) {
+    var Utils;
+    (function (Utils) {
+        // TODO: http://www.javascripture.com/Uint8ClampedArray
+        // TODO: Uint8ClampedArray is better than Uint8Array to avoid checking for out of bounds
+        // TODO: check performance (it seems identical) http://jsperf.com/uint8-typed-array-vs-imagedata/4
+        /*
+    
+         TODO: Examples:
+    
+         var x = new Uint8ClampedArray([17, -45.3]);
+         console.log(x[0]); // 17
+         console.log(x[1]); // 0
+         console.log(x.length); // 2
+    
+         var x = new Uint8Array([17, -45.3]);
+         console.log(x[0]); // 17
+         console.log(x[1]); // 211
+         console.log(x.length); // 2
+    
+         */
+        var PointContainer = (function () {
+            function PointContainer() {
+                this._width = 0;
+                this._height = 0;
+                this._pointArray = [];
+            }
+            PointContainer.prototype.getWidth = function () {
+                return this._width;
+            };
+            PointContainer.prototype.getHeight = function () {
+                return this._height;
+            };
+            PointContainer.prototype.setWidth = function (width) {
+                this._width = width;
+            };
+            PointContainer.prototype.setHeight = function (height) {
+                this._height = height;
+            };
+            PointContainer.prototype.getPointArray = function () {
+                return this._pointArray;
+            };
+            PointContainer.prototype.clone = function () {
+                var clone = new PointContainer();
+                clone._width = this._width;
+                clone._height = this._height;
+                clone._pointArray = [];
+                for (var i = 0, l = this._pointArray.length; i < l; i++) {
+                    clone._pointArray[i] = Utils.Point.createByUint32(this._pointArray[i].uint32 | 0); // "| 0" is added for v8 optimization
+                }
+                return clone;
+            };
+            PointContainer.prototype.importHTMLImageElement = function (img) {
+                var width = img.naturalWidth, height = img.naturalHeight;
+                var canvas = document.createElement("canvas");
+                canvas.width = width;
+                canvas.height = height;
+                var ctx = canvas.getContext("2d");
+                ctx.drawImage(img, 0, 0, width, height, 0, 0, width, height);
+                this.importHTMLCanvasElement(canvas);
+            };
+            PointContainer.prototype.importHTMLCanvasElement = function (canvas) {
+                var width = canvas.width, height = canvas.height;
+                var ctx = canvas.getContext("2d"), imgData = ctx.getImageData(0, 0, width, height);
+                this.importImageData(imgData);
+            };
+            PointContainer.prototype.importNodeCanvas = function (canvas) {
+                this.importHTMLCanvasElement(canvas);
+            };
+            PointContainer.prototype.importImageData = function (imageData) {
+                var width = imageData.width, height = imageData.height;
+                this.importCanvasPixelArray(imageData.data, width, height);
+                /*
+                            var buf8;
+                            if (Utils.typeOf(imageData.data) == "CanvasPixelArray")
+                                buf8 = new Uint8Array(imageData.data);
+                            else
+                                buf8 = imageData.data;
+                
+                            this.importUint32Array(new Uint32Array(buf8.buffer), width, height);
+                */
+            };
+            PointContainer.prototype.importArray = function (data, width, height) {
+                var uint8array = new Uint8Array(data);
+                this.importUint32Array(new Uint32Array(uint8array.buffer), width, height);
+            };
+            PointContainer.prototype.importCanvasPixelArray = function (data, width, height) {
+                this.importArray(data, width, height);
+            };
+            PointContainer.prototype.importUint32Array = function (uint32array, width, height) {
+                this._width = width;
+                this._height = height;
+                this._pointArray = []; //new Array(uint32array.length);
+                for (var i = 0, l = uint32array.length; i < l; i++) {
+                    this._pointArray[i] = Utils.Point.createByUint32(uint32array[i] | 0); // "| 0" is added for v8 optimization
+                }
+            };
+            PointContainer.prototype.exportUint32Array = function () {
+                var l = this._pointArray.length, uint32Array = new Uint32Array(l);
+                for (var i = 0; i < l; i++) {
+                    uint32Array[i] = this._pointArray[i].uint32;
+                }
+                return uint32Array;
+            };
+            PointContainer.prototype.exportUint8Array = function () {
+                return new Uint8Array(this.exportUint32Array().buffer);
+            };
+            return PointContainer;
+        })();
+        Utils.PointContainer = PointContainer;
+    })(Utils = IQ.Utils || (IQ.Utils = {}));
 })(IQ || (IQ = {}));
 /// <reference path='iquantize.ts' />
 var IQ;
@@ -791,7 +958,6 @@ var IQ;
 (function (IQ) {
     var Palette;
     (function (Palette) {
-        var netsize = 256;
         /* number of colours used */
         /*
          four primes near 500 - assume no image has a length so large
@@ -810,15 +976,12 @@ var IQ;
         var gamma = (1 << gammashift), betashift = 10, beta = (intbias >> betashift);
         // beta = 1/1024
         var betagamma = (intbias << (gammashift - betashift));
-        /* defs for decreasing radius factor */
-        var initrad = (netsize >> 3);
         /*
-         * for 256 cols, radius
-         * starts
+         * for 256 cols, radius starts
          */
         var radiusbiasshift = 6;
         // at 32.0 biased by 6 bits
-        var radiusbias = 1 << radiusbiasshift, initradius = initrad * radiusbias;
+        var radiusbias = 1 << radiusbiasshift;
         /*
          * and
          * decreases
@@ -836,7 +999,6 @@ var IQ;
         var Neuron = (function () {
             function Neuron(defaultValue) {
                 this.r = this.g = this.b = this.a = defaultValue;
-                this.index = 0;
             }
             Neuron.prototype.toPoint = function () {
                 return IQ.Utils.Point.createByRGBA(this.r, this.g, this.b, this.a);
@@ -854,7 +1016,7 @@ var IQ;
                 if (sampleFactor === void 0) { sampleFactor = 1; }
                 this._pointArray = [];
                 this._samplefac = sampleFactor;
-                netsize = colors;
+                this._netsize = colors;
             }
             NeuQuant.prototype.sample = function (pointBuffer) {
                 this._pointArray = this._pointArray.concat(pointBuffer.getPointArray());
@@ -871,10 +1033,10 @@ var IQ;
                 this._bias = [];
                 this._radpower = [];
                 this._network = [];
-                for (var i = 0; i < netsize; i++) {
-                    this._network[i] = new Neuron((i << (netbiasshift + 8)) / netsize);
-                    // 1/netsize
-                    this._freq[i] = intbias / netsize;
+                for (var i = 0; i < this._netsize; i++) {
+                    this._network[i] = new Neuron((i << (netbiasshift + 8)) / this._netsize);
+                    // 1/this._netsize
+                    this._freq[i] = intbias / this._netsize;
                     this._bias[i] = 0;
                 }
             };
@@ -892,7 +1054,7 @@ var IQ;
                 samplepixels = lengthcount / (bytesPerPoint * this._samplefac);
                 delta = (samplepixels / ncycles) | 0;
                 alpha = initalpha;
-                radius = initradius;
+                radius = (this._netsize >> 3) * radiusbias;
                 rad = radius >> radiusbiasshift;
                 if (rad <= 1)
                     rad = 0;
@@ -942,12 +1104,12 @@ var IQ;
              */
             NeuQuant.prototype._inxbuild = function () {
                 var i, j, smallpos, smallval, p, q;
-                for (i = 0; i < netsize; i++) {
+                for (i = 0; i < this._netsize; i++) {
                     p = this._network[i];
                     smallpos = i;
                     smallval = p.g;
-                    /* find smallest in i..netsize-1 */
-                    for (j = i + 1; j < netsize; j++) {
+                    /* find smallest in i..this._netsize-1 */
+                    for (j = i + 1; j < this._netsize; j++) {
                         q = this._network[j];
                         if (q.g < smallval) {
                             smallpos = j;
@@ -963,8 +1125,8 @@ var IQ;
             };
             NeuQuant.prototype._buildPalette = function () {
                 var palette = new IQ.Utils.Palette();
-                for (var j = 0; j < netsize; j++) {
-                    palette._paletteArray.push(this._network[j].toPoint());
+                for (var j = 0; j < this._netsize; j++) {
+                    palette.add(this._network[j].toPoint());
                 }
                 palette.sort();
                 return palette;
@@ -973,13 +1135,12 @@ var IQ;
              * Unbias network to give byte values 0..255 and record position i to prepare for sort
              */
             NeuQuant.prototype._unbiasnet = function () {
-                for (var i = 0; i < netsize; i++) {
+                for (var i = 0; i < this._netsize; i++) {
                     var neuron = this._network[i];
                     neuron.b >>= netbiasshift;
                     neuron.g >>= netbiasshift;
                     neuron.r >>= netbiasshift;
                     neuron.a >>= netbiasshift;
-                    neuron.index = i;
                 }
             };
             /**
@@ -991,8 +1152,8 @@ var IQ;
                 if (lo < -1)
                     lo = -1;
                 hi = i + rad;
-                if (hi > netsize)
-                    hi = netsize;
+                if (hi > this._netsize)
+                    hi = this._netsize;
                 j = i + 1;
                 k = i - 1;
                 m = 1;
@@ -1031,7 +1192,7 @@ var IQ;
              *	finds closest neuron (min dist) and updates freq
              *	finds best neuron (min dist-bias) and returns position
              *	for frequently chosen neurons, freq[i] is high and bias[i] is negative
-             *	bias[i] = gamma*((1/netsize)-freq[i])
+             *	bias[i] = gamma*((1/this._netsize)-freq[i])
              */
             NeuQuant.prototype._contest = function (b, g, r, al) {
                 var i, dist, a, biasdist, betafreq, bestpos, bestbiaspos, bestd, bestbiasd, n;
@@ -1039,9 +1200,9 @@ var IQ;
                 bestbiasd = bestd;
                 bestpos = -1;
                 bestbiaspos = bestpos;
-                for (i = 0; i < netsize; i++) {
+                for (i = 0; i < this._netsize; i++) {
                     n = this._network[i];
-                    //dist = Utils.distEuclidean([ n.r, n.g, n.b, n.a], [r, g, b, al]) * 1024;
+                    //dist = Utils.distEuclidean([ n.r, n.g, n.b, n.a], [r, g, b, al]);
                     dist = n.b - b;
                     if (dist < 0)
                         dist = -dist;
@@ -1053,7 +1214,7 @@ var IQ;
                     if (a < 0)
                         a = -a;
                     dist += a;
-                    a = n.a - al;
+                    a = (n.a - al);
                     if (a < 0)
                         a = -a;
                     dist += a;
@@ -1094,9 +1255,9 @@ var IQ;
  */
 /// <reference path='../../utils/point.ts' />
 /// <reference path='../../utils/palette.ts' />
-/// <reference path='../../utils/pointBuffer.ts' />
+/// <reference path='../../utils/pointContainer.ts' />
+///<reference path="../../utils/colorHistogram.ts"/>
 /// <reference path='../../utils/utils.ts' />
-/// <reference path='hueStatistics.ts' />
 var IQ;
 (function (IQ) {
     var Palette;
@@ -1106,71 +1267,21 @@ var IQ;
             function RgbQuant(colors, method) {
                 if (colors === void 0) { colors = 256; }
                 if (method === void 0) { method = 2; }
-                // 1 = by global population, 2 = subregion population threshold
-                this._method = method;
                 // desired final palette size
                 this._colors = colors;
-                // # of highest-frequency colors to start with for palette reduction
-                this._initColors = this._colors << 2; //opts.initColors || 65536; //4096;
-                // if > 0, enables hues stats and min-color retention per group
-                this._minHueCols = this._colors << 2; //opts.minHueCols || 0;
-                this._initDist = 0.01;
-                this._distIncr = 0.005;
-                this._hueGroups = 10;
-                this._boxPxls = 2;
-                this._boxSize = [64, 64];
                 // accumulated histogram
-                this._histogram = {};
-                // HueStatistics instance
-                this._hueStats = new IQ.HueStatistics(this._hueGroups, this._minHueCols);
+                this._histogram = new IQ.Utils.ColorHistogram(method, colors);
+                this._initialDistance = 0.01;
+                this._distanceIncrement = 0.005;
             }
             // gathers histogram info
-            RgbQuant.prototype.sample = function (pointBuffer) {
-                switch (this._method) {
-                    case 1:
-                        this._colorStats1D(pointBuffer);
-                        break;
-                    case 2:
-                        this._colorStats2D(pointBuffer);
-                        break;
-                }
+            RgbQuant.prototype.sample = function (image) {
+                this._histogram.sample(image);
             };
             // reduces histogram to palette, remaps & memoizes reduced colors
             RgbQuant.prototype.quantize = function () {
-                var idxi32 = this._getImportanceSortedColorsIDXI32(), palette = this._buildPalette(idxi32);
-                palette.sort();
-                return palette;
-            };
-            RgbQuant.prototype._getImportanceSortedColorsIDXI32 = function () {
-                var sorted = IQ.Utils.sortedHashKeys(this._histogram, true);
-                // TODO: change throw error to return null instead of palette
-                if (sorted.length == 0)
-                    throw "Nothing has been sampled, palette cannot be built.";
-                switch (this._method) {
-                    case 1:
-                        var initialColorsLimit = Math.min(sorted.length, this._initColors), last = sorted[initialColorsLimit - 1], freq = this._histogram[last];
-                        var idxi32 = sorted.slice(0, initialColorsLimit);
-                        // add any cut off colors with same freq as last
-                        var pos = initialColorsLimit, len = sorted.length;
-                        while (pos < len && this._histogram[sorted[pos]] == freq)
-                            idxi32.push(sorted[pos++]);
-                        // inject min huegroup colors
-                        this._hueStats.inject(idxi32);
-                        break;
-                    case 2:
-                        var idxi32 = sorted;
-                        break;
-                }
-                // int32-ify values
-                idxi32 = idxi32.map(function (v) {
-                    return +v;
-                });
-                return idxi32;
-            };
-            // reduces similar colors from an importance-sorted Uint32 rgba array
-            RgbQuant.prototype._buildPalette = function (idxi32) {
-                // reduce histogram to create initial palette
-                // build full rgb palette
+                var idxi32 = this._histogram.getImportanceSortedColorsIDXI32();
+                // build idxrgb from idxi32
                 var idxrgb = idxi32.map(function (i32) {
                     return [
                         (i32 & 0xff),
@@ -1179,7 +1290,21 @@ var IQ;
                         (i32 >>> 24) & 0xff
                     ];
                 });
-                var len = idxrgb.length, palLen = len, thold = this._initDist;
+                this._buildPalette(idxrgb);
+                var palette = new IQ.Utils.Palette();
+                for (var pointIndex = 0, l = idxrgb.length; pointIndex < l; pointIndex++) {
+                    if (!idxrgb[pointIndex])
+                        continue;
+                    palette.add(IQ.Utils.Point.createByQuadruplet(idxrgb[pointIndex]));
+                }
+                palette.sort();
+                return palette;
+            };
+            // reduces similar colors from an importance-sorted Uint32 rgba array
+            RgbQuant.prototype._buildPalette = function (idxrgb) {
+                // reduce histogram to create initial palette
+                // build full rgb palette
+                var len = idxrgb.length, palLen = len, thold = this._initialDistance;
                 // palette already at or below desired length
                 if (palLen > this._colors) {
                     while (palLen > this._colors) {
@@ -1205,7 +1330,7 @@ var IQ;
                         // palette reduction pass
                         // console.log("palette length: " + palLen);
                         // if palette is still much larger than target, increment by larger initDist
-                        thold += (palLen > this._colors * 3) ? this._initDist : this._distIncr;
+                        thold += (palLen > this._colors * 3) ? this._initialDistance : this._distanceIncrement;
                     }
                     // if palette is over-reduced, re-add removed colors with largest distances from last round
                     if (palLen < this._colors) {
@@ -1222,59 +1347,7 @@ var IQ;
                         }
                     }
                 }
-                var palette = new IQ.Utils.Palette();
-                for (var pointIndex = 0, l = idxrgb.length; pointIndex < l; pointIndex++) {
-                    if (!idxrgb[pointIndex])
-                        continue;
-                    palette._paletteArray.push(IQ.Utils.Point.createByQuadruplet(idxrgb[pointIndex]));
-                }
-                return palette;
-            };
-            // global top-population
-            RgbQuant.prototype._colorStats1D = function (pointBuffer) {
-                var histG = this._histogram, pointArray = pointBuffer.getPointArray(), len = pointArray.length;
-                for (var i = 0; i < len; i++) {
-                    var col = pointArray[i].uint32;
-                    // collect hue stats
-                    this._hueStats.check(col);
-                    if (col in histG)
-                        histG[col]++;
-                    else
-                        histG[col] = 1;
-                }
-            };
-            // population threshold within subregions
-            // FIXME: this can over-reduce (few/no colors same?), need a way to keep
-            // important colors that dont ever reach local thresholds (gradients?)
-            RgbQuant.prototype._colorStats2D = function (pointBuffer) {
-                var width = pointBuffer.getWidth(), height = pointBuffer.getHeight(), pointArray = pointBuffer.getPointArray();
-                var boxW = this._boxSize[0], boxH = this._boxSize[1], area = boxW * boxH, boxes = IQ.Utils.makeBoxes(width, height, boxW, boxH), histG = this._histogram;
-                boxes.forEach(function (box) {
-                    var effc = Math.max(Math.round((box.w * box.h) / area) * this._boxPxls, 2), histL = {}, col;
-                    this._iterBox(box, width, function (i) {
-                        col = pointArray[i].uint32;
-                        // collect hue stats
-                        this._hueStats.check(col);
-                        if (col in histG)
-                            histG[col]++;
-                        else if (col in histL) {
-                            if (++histL[col] >= effc)
-                                histG[col] = histL[col];
-                        }
-                        else
-                            histL[col] = 1;
-                    });
-                }, this);
-                // inject min huegroup colors
-                this._hueStats.inject(histG);
-            };
-            // iterates @bbox within a parent rect of width @wid; calls @fn, passing index within parent
-            RgbQuant.prototype._iterBox = function (bbox, wid, fn) {
-                var b = bbox, i0 = b.y * wid + b.x, i1 = (b.y + b.h - 1) * wid + (b.x + b.w - 1), cnt = 0, incr = wid - b.w + 1, i = i0;
-                do {
-                    fn.call(this, i);
-                    i += (++cnt % b.w == 0) ? incr : 1;
-                } while (i <= i1);
+                return idxrgb;
             };
             return RgbQuant;
         })();
@@ -1362,8 +1435,8 @@ var IQ;
  */
 /// <reference path='utils/point.ts' />
 /// <reference path='utils/palette.ts' />
-/// <reference path='utils/pointBuffer.ts' />
-/// <reference path='palette/rgbquant/hueStatistics.ts' />
+/// <reference path='utils/pointContainer.ts' />
+/// <reference path='utils/hueStatistics.ts' />
 /// <reference path='image/iquantize.ts' />
 /// <reference path='image/errorDiffusionDithering.ts' />
 /// <reference path='image/nearest.ts' />

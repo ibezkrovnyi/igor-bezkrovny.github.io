@@ -52,7 +52,7 @@ var APP;
 		return can2;
 	}
 
-	exports.process = function (img, optionColors, optionPaletteQuantizer, optionImageDithering) {
+	exports.process = function (img, optionColors, optionInitialColors, optionPaletteQuantizer, optionImageDithering) {
 		var pointBuffer,
 			originalPointBuffer,
 			paletteQuantizer,
@@ -60,22 +60,26 @@ var APP;
 			pal8,
 			img8;
 
-		pointBuffer = new IQ.Utils.PointBuffer();
+		pointBuffer = new IQ.Utils.PointContainer();
 		pointBuffer.importHTMLImageElement(img);
 		originalPointBuffer = pointBuffer.clone();
 
 		var time = Date.now();
+		var colorHistogram = new IQ.Utils.ColorHistogram(2, optionColors << 2);
+
 			timeMark("...sample", function () {
 				if (optionPaletteQuantizer === "neuquant") {
-					paletteQuantizer = new IQ.Palette.NeuQuant(optionColors);
+					paletteQuantizer = new IQ.Palette.NeuQuant(optionInitialColors);
 				} else {
-					paletteQuantizer = new IQ.Palette.RgbQuant(optionColors);
+					paletteQuantizer = new IQ.Palette.RgbQuant(optionInitialColors);
 				}
 				paletteQuantizer.sample(pointBuffer);
+				colorHistogram.sample(pointBuffer);
 			});
 
 			timeMark("...palette", function () {
 				pal8 = paletteQuantizer.quantize();
+				pal8.reduce(colorHistogram, optionColors);
 			});
 
 			timeMark("...dither", function () {
