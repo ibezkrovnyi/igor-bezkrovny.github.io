@@ -1527,42 +1527,167 @@ var IQ;
             function WuQuant(colors) {
                 if (colors === void 0) { colors = 256; }
                 this._colors = colors;
+                // TODO: 'C' version use maxColors=256 for 256 colors palette, 'C#' version uses maxColors=512 for 256 colors palette. I think it is for colors count variation in 'C#' version.
+                WuQuant.maxColors = colors;
+                // creates all the _cubes
+                this._cubes = [];
+                // initializes all the _cubes
+                for (var cubeIndex = 0; cubeIndex < WuQuant.maxColors; cubeIndex++) {
+                    this._cubes[cubeIndex] = new Palette.WuColorCube();
+                }
+                // resets the reference minimums
+                this._cubes[0].RedMinimum = 0;
+                this._cubes[0].GreenMinimum = 0;
+                this._cubes[0].BlueMinimum = 0;
+                // resets the reference maximums
+                this._cubes[0].RedMaximum = WuQuant.maxSideIndex;
+                this._cubes[0].GreenMaximum = WuQuant.maxSideIndex;
+                this._cubes[0].BlueMaximum = WuQuant.maxSideIndex;
+                this._weights = createArray3D(WuQuant.sideSize, WuQuant.sideSize, WuQuant.sideSize);
+                this._momentsRed = createArray3D(WuQuant.sideSize, WuQuant.sideSize, WuQuant.sideSize);
+                this._momentsGreen = createArray3D(WuQuant.sideSize, WuQuant.sideSize, WuQuant.sideSize);
+                this._momentsBlue = createArray3D(WuQuant.sideSize, WuQuant.sideSize, WuQuant.sideSize);
+                this._moments = createArray3D(WuQuant.sideSize, WuQuant.sideSize, WuQuant.sideSize);
+                this._table = [];
+                for (var tableIndex = 0; tableIndex < 256; ++tableIndex) {
+                    this._table[tableIndex] = tableIndex * tableIndex;
+                }
+                this._pixels = [];
             }
-            // Converts the histogram to a series of moments.
-            WuQuant.prototype.CalculateMoments = function () {
-                var area = createArray1D(WuQuant.SideSize), areaRed = createArray1D(WuQuant.SideSize), areaGreen = createArray1D(WuQuant.SideSize), areaBlue = createArray1D(WuQuant.SideSize), area2 = createArray1D(WuQuant.SideSize);
-                for (var redIndex = 1; redIndex <= WuQuant.MaxSideIndex; ++redIndex) {
-                    for (var index = 0; index <= WuQuant.MaxSideIndex; ++index) {
+            WuQuant.prototype.sample = function (image) {
+                var pointArray = image.getPointArray();
+                for (var i = 0, l = pointArray.length; i < l; i++) {
+                    this.addColor(pointArray[i]);
+                }
+                this._pixels = this._pixels.concat(pointArray);
+            };
+            WuQuant.prototype.quantize = function () {
+                var l;
+                // preprocess the colors
+                this._calculateMoments();
+                var next = 0, volumeVariance = createArray1D(WuQuant.maxColors);
+                // processes the _cubes
+                for (var cubeIndex = 1; cubeIndex < this._colors; ++cubeIndex) {
+                    // if cut is possible; make it
+                    if (this._cut(this._cubes[next], this._cubes[cubeIndex])) {
+                        volumeVariance[next] = this._cubes[next].Volume > 1 ? this._calculateVariance(this._cubes[next]) : 0.0;
+                        volumeVariance[cubeIndex] = this._cubes[cubeIndex].Volume > 1 ? this._calculateVariance(this._cubes[cubeIndex]) : 0.0;
+                    }
+                    else {
+                        // the cut was not possible, revert the index
+                        volumeVariance[next] = 0.0;
+                        cubeIndex--;
+                    }
+                    next = 0;
+                    var temp = volumeVariance[0];
+                    for (var index = 1; index <= cubeIndex; ++index) {
+                        if (volumeVariance[index] > temp) {
+                            temp = volumeVariance[index];
+                            next = index;
+                        }
+                    }
+                    if (temp <= 0.0) {
+                        this._colors = cubeIndex + 1;
+                        break;
+                    }
+                }
+                var lookupRed = [], lookupGreen = [], lookupBlue = [];
+                // precalculates lookup tables
+                for (var k = 0; k < this._colors; ++k) {
+                    var weight = WuQuant.volume(this._cubes[k], this._weights);
+                    if (weight > 0) {
+                        lookupRed[k] = (WuQuant.volume(this._cubes[k], this._momentsRed) / weight) | 0;
+                        lookupGreen[k] = (WuQuant.volume(this._cubes[k], this._momentsGreen) / weight) | 0;
+                        lookupBlue[k] = (WuQuant.volume(this._cubes[k], this._momentsBlue) / weight) | 0;
+                    }
+                    else {
+                        lookupRed[k] = 0;
+                        lookupGreen[k] = 0;
+                        lookupBlue[k] = 0;
+                    }
+                }
+                this._reds = createArray1D(this._colors + 1);
+                this._greens = createArray1D(this._colors + 1);
+                this._blues = createArray1D(this._colors + 1);
+                this._sums = createArray1D(this._colors + 1);
+                // scans and adds colors
+                l = this._pixels.length;
+                for (var index = 0; index < l; index++) {
+                    var color = this._pixels[index];
+                    var match = -1, bestMatch = match, bestDistance = 100000000;
+                    for (var lookup = 0; lookup < this._colors; lookup++) {
+                        var foundRed = lookupRed[lookup], foundGreen = lookupGreen[lookup], foundBlue = lookupBlue[lookup], deltaRed = color.r - foundRed, deltaGreen = color.g - foundGreen, deltaBlue = color.b - foundBlue, distance = deltaRed * deltaRed + deltaGreen * deltaGreen + deltaBlue * deltaBlue;
+                        if (distance < bestDistance) {
+                            bestDistance = distance;
+                            bestMatch = lookup;
+                        }
+                    }
+                    this._reds[bestMatch] += color.r;
+                    this._greens[bestMatch] += color.g;
+                    this._blues[bestMatch] += color.b;
+                    this._sums[bestMatch]++;
+                }
+                var palette = new IQ.Utils.Palette();
+                // generates palette
+                for (var paletteIndex = 0; paletteIndex < this._colors; paletteIndex++) {
+                    if (this._sums[paletteIndex] > 0) {
+                        this._reds[paletteIndex] = (this._reds[paletteIndex] / this._sums[paletteIndex]) | 0;
+                        this._greens[paletteIndex] = (this._greens[paletteIndex] / this._sums[paletteIndex]) | 0;
+                        this._blues[paletteIndex] = (this._blues[paletteIndex] / this._sums[paletteIndex]) | 0;
+                    }
+                    var color = IQ.Utils.Point.createByRGBA(this._reds[paletteIndex], this._greens[paletteIndex], this._blues[paletteIndex], 255);
+                    palette.add(color);
+                }
+                palette.sort();
+                return palette;
+            };
+            WuQuant.prototype.addColor = function (color) {
+                var indexRed = (color.r >> 3) + 1, indexGreen = (color.g >> 3) + 1, indexBlue = (color.b >> 3) + 1;
+                this._weights[indexRed][indexGreen][indexBlue]++;
+                this._momentsRed[indexRed][indexGreen][indexBlue] += color.r;
+                this._momentsGreen[indexRed][indexGreen][indexBlue] += color.g;
+                this._momentsBlue[indexRed][indexGreen][indexBlue] += color.b;
+                this._moments[indexRed][indexGreen][indexBlue] += this._table[color.r] + this._table[color.g] + this._table[color.b];
+            };
+            /**
+             * Converts the histogram to a series of _moments.
+             */
+            WuQuant.prototype._calculateMoments = function () {
+                var area = [], areaRed = [], areaGreen = [], areaBlue = [], area2 = [];
+                for (var redIndex = 1; redIndex <= WuQuant.maxSideIndex; ++redIndex) {
+                    for (var index = 0; index <= WuQuant.maxSideIndex; ++index) {
                         area[index] = 0;
                         areaRed[index] = 0;
                         areaGreen[index] = 0;
                         areaBlue[index] = 0;
                         area2[index] = 0;
                     }
-                    for (var greenIndex = 1; greenIndex <= WuQuant.MaxSideIndex; ++greenIndex) {
+                    for (var greenIndex = 1; greenIndex <= WuQuant.maxSideIndex; ++greenIndex) {
                         var line = 0, lineRed = 0, lineGreen = 0, lineBlue = 0, line2 = 0.0;
-                        for (var blueIndex = 1; blueIndex <= WuQuant.MaxSideIndex; ++blueIndex) {
-                            line += this.weights[redIndex][greenIndex][blueIndex];
-                            lineRed += this.momentsRed[redIndex][greenIndex][blueIndex];
-                            lineGreen += this.momentsGreen[redIndex][greenIndex][blueIndex];
-                            lineBlue += this.momentsBlue[redIndex][greenIndex][blueIndex];
-                            line2 += this.moments[redIndex][greenIndex][blueIndex];
+                        for (var blueIndex = 1; blueIndex <= WuQuant.maxSideIndex; ++blueIndex) {
+                            line += this._weights[redIndex][greenIndex][blueIndex];
+                            lineRed += this._momentsRed[redIndex][greenIndex][blueIndex];
+                            lineGreen += this._momentsGreen[redIndex][greenIndex][blueIndex];
+                            lineBlue += this._momentsBlue[redIndex][greenIndex][blueIndex];
+                            line2 += this._moments[redIndex][greenIndex][blueIndex];
                             area[blueIndex] += line;
                             areaRed[blueIndex] += lineRed;
                             areaGreen[blueIndex] += lineGreen;
                             areaBlue[blueIndex] += lineBlue;
                             area2[blueIndex] += line2;
-                            this.weights[redIndex][greenIndex][blueIndex] = this.weights[redIndex - 1][greenIndex][blueIndex] + area[blueIndex];
-                            this.momentsRed[redIndex][greenIndex][blueIndex] = this.momentsRed[redIndex - 1][greenIndex][blueIndex] + areaRed[blueIndex];
-                            this.momentsGreen[redIndex][greenIndex][blueIndex] = this.momentsGreen[redIndex - 1][greenIndex][blueIndex] + areaGreen[blueIndex];
-                            this.momentsBlue[redIndex][greenIndex][blueIndex] = this.momentsBlue[redIndex - 1][greenIndex][blueIndex] + areaBlue[blueIndex];
-                            this.moments[redIndex][greenIndex][blueIndex] = this.moments[redIndex - 1][greenIndex][blueIndex] + area2[blueIndex];
+                            this._weights[redIndex][greenIndex][blueIndex] = this._weights[redIndex - 1][greenIndex][blueIndex] + area[blueIndex];
+                            this._momentsRed[redIndex][greenIndex][blueIndex] = this._momentsRed[redIndex - 1][greenIndex][blueIndex] + areaRed[blueIndex];
+                            this._momentsGreen[redIndex][greenIndex][blueIndex] = this._momentsGreen[redIndex - 1][greenIndex][blueIndex] + areaGreen[blueIndex];
+                            this._momentsBlue[redIndex][greenIndex][blueIndex] = this._momentsBlue[redIndex - 1][greenIndex][blueIndex] + areaBlue[blueIndex];
+                            this._moments[redIndex][greenIndex][blueIndex] = this._moments[redIndex - 1][greenIndex][blueIndex] + area2[blueIndex];
                         }
                     }
                 }
             };
-            // Computes the volume of the cube in a specific moment.
-            WuQuant.Volume = function (cube, moment) {
+            /**
+             * Computes the volume of the cube in a specific moment.
+             */
+            WuQuant.volume = function (cube, moment) {
                 return moment[cube.RedMaximum][cube.GreenMaximum][cube.BlueMaximum] -
                     moment[cube.RedMaximum][cube.GreenMaximum][cube.BlueMinimum] -
                     moment[cube.RedMaximum][cube.GreenMinimum][cube.BlueMaximum] +
@@ -1572,31 +1697,22 @@ var IQ;
                     moment[cube.RedMinimum][cube.GreenMinimum][cube.BlueMaximum] -
                     moment[cube.RedMinimum][cube.GreenMinimum][cube.BlueMinimum];
             };
-            // Computes the volume of the cube in a specific moment. For the floating-point values.
-            WuQuant.VolumeFloat = function (cube, moment) {
-                return moment[cube.RedMaximum][cube.GreenMaximum][cube.BlueMaximum] -
-                    moment[cube.RedMaximum][cube.GreenMaximum][cube.BlueMinimum] -
-                    moment[cube.RedMaximum][cube.GreenMinimum][cube.BlueMaximum] +
-                    moment[cube.RedMaximum][cube.GreenMinimum][cube.BlueMinimum] -
-                    moment[cube.RedMinimum][cube.GreenMaximum][cube.BlueMaximum] +
-                    moment[cube.RedMinimum][cube.GreenMaximum][cube.BlueMinimum] +
-                    moment[cube.RedMinimum][cube.GreenMinimum][cube.BlueMaximum] -
-                    moment[cube.RedMinimum][cube.GreenMinimum][cube.BlueMinimum];
-            };
-            // Splits the cube in given position, and color direction.
-            WuQuant.Top = function (cube, direction, position, moment) {
+            /**
+             * Splits the cube in given position, and color direction.
+             */
+            WuQuant.top = function (cube, direction, position, moment) {
                 switch (direction) {
-                    case WuQuant.Red:
+                    case WuQuant.red:
                         return (moment[position][cube.GreenMaximum][cube.BlueMaximum] -
                             moment[position][cube.GreenMaximum][cube.BlueMinimum] -
                             moment[position][cube.GreenMinimum][cube.BlueMaximum] +
                             moment[position][cube.GreenMinimum][cube.BlueMinimum]);
-                    case WuQuant.Green:
+                    case WuQuant.green:
                         return (moment[cube.RedMaximum][position][cube.BlueMaximum] -
                             moment[cube.RedMaximum][position][cube.BlueMinimum] -
                             moment[cube.RedMinimum][position][cube.BlueMaximum] +
                             moment[cube.RedMinimum][position][cube.BlueMinimum]);
-                    case WuQuant.Blue:
+                    case WuQuant.blue:
                         return (moment[cube.RedMaximum][cube.GreenMaximum][position] -
                             moment[cube.RedMaximum][cube.GreenMinimum][position] -
                             moment[cube.RedMinimum][cube.GreenMaximum][position] +
@@ -1605,20 +1721,22 @@ var IQ;
                         return 0;
                 }
             };
-            // Splits the cube in a given color direction at its minimum.
-            WuQuant.Bottom = function (cube, direction, moment) {
+            /**
+             * Splits the cube in a given color direction at its minimum.
+             */
+            WuQuant.bottom = function (cube, direction, moment) {
                 switch (direction) {
-                    case WuQuant.Red:
+                    case WuQuant.red:
                         return (-moment[cube.RedMinimum][cube.GreenMaximum][cube.BlueMaximum] +
                             moment[cube.RedMinimum][cube.GreenMaximum][cube.BlueMinimum] +
                             moment[cube.RedMinimum][cube.GreenMinimum][cube.BlueMaximum] -
                             moment[cube.RedMinimum][cube.GreenMinimum][cube.BlueMinimum]);
-                    case WuQuant.Green:
+                    case WuQuant.green:
                         return (-moment[cube.RedMaximum][cube.GreenMinimum][cube.BlueMaximum] +
                             moment[cube.RedMaximum][cube.GreenMinimum][cube.BlueMinimum] +
                             moment[cube.RedMinimum][cube.GreenMinimum][cube.BlueMaximum] -
                             moment[cube.RedMinimum][cube.GreenMinimum][cube.BlueMinimum]);
-                    case WuQuant.Blue:
+                    case WuQuant.blue:
                         return (-moment[cube.RedMaximum][cube.GreenMaximum][cube.BlueMinimum] +
                             moment[cube.RedMaximum][cube.GreenMinimum][cube.BlueMinimum] +
                             moment[cube.RedMinimum][cube.GreenMaximum][cube.BlueMinimum] -
@@ -1627,18 +1745,22 @@ var IQ;
                         return 0;
                 }
             };
-            // Calculates statistical variance for a given cube.
-            WuQuant.prototype.CalculateVariance = function (cube) {
-                var volumeRed = WuQuant.Volume(cube, this.momentsRed), volumeGreen = WuQuant.Volume(cube, this.momentsGreen), volumeBlue = WuQuant.Volume(cube, this.momentsBlue), volumeMoment = WuQuant.VolumeFloat(cube, this.moments), volumeWeight = WuQuant.Volume(cube, this.weights), distance = volumeRed * volumeRed + volumeGreen * volumeGreen + volumeBlue * volumeBlue;
+            /**
+             * Calculates statistical variance for a given cube.
+             */
+            WuQuant.prototype._calculateVariance = function (cube) {
+                var volumeRed = WuQuant.volume(cube, this._momentsRed), volumeGreen = WuQuant.volume(cube, this._momentsGreen), volumeBlue = WuQuant.volume(cube, this._momentsBlue), volumeMoment = WuQuant.volume(cube, this._moments), volumeWeight = WuQuant.volume(cube, this._weights), distance = volumeRed * volumeRed + volumeGreen * volumeGreen + volumeBlue * volumeBlue;
                 return volumeMoment - (distance / volumeWeight);
             };
-            //	Finds the optimal (maximal) position for the cut.
-            WuQuant.prototype.Maximize = function (cube, direction, first, last, /*IList<Int32>*/ cut, wholeRed, wholeGreen, wholeBlue, wholeWeight) {
-                var bottomRed = WuQuant.Bottom(cube, direction, this.momentsRed), bottomGreen = WuQuant.Bottom(cube, direction, this.momentsGreen), bottomBlue = WuQuant.Bottom(cube, direction, this.momentsBlue), bottomWeight = WuQuant.Bottom(cube, direction, this.weights), result = 0.0;
+            /**
+             * Finds the optimal (maximal) position for the cut.
+             */
+            WuQuant.prototype._maximize = function (cube, direction, first, last, cut, wholeRed, wholeGreen, wholeBlue, wholeWeight) {
+                var bottomRed = WuQuant.bottom(cube, direction, this._momentsRed), bottomGreen = WuQuant.bottom(cube, direction, this._momentsGreen), bottomBlue = WuQuant.bottom(cube, direction, this._momentsBlue), bottomWeight = WuQuant.bottom(cube, direction, this._weights), result = 0.0;
                 cut[0] = -1;
                 for (var position = first; position < last; ++position) {
                     // determines the cube cut at a certain position
-                    var halfRed = bottomRed + WuQuant.Top(cube, direction, position, this.momentsRed), halfGreen = bottomGreen + WuQuant.Top(cube, direction, position, this.momentsGreen), halfBlue = bottomBlue + WuQuant.Top(cube, direction, position, this.momentsBlue), halfWeight = bottomWeight + WuQuant.Top(cube, direction, position, this.weights);
+                    var halfRed = bottomRed + WuQuant.top(cube, direction, position, this._momentsRed), halfGreen = bottomGreen + WuQuant.top(cube, direction, position, this._momentsGreen), halfBlue = bottomBlue + WuQuant.top(cube, direction, position, this._momentsBlue), halfWeight = bottomWeight + WuQuant.top(cube, direction, position, this._weights);
                     // the cube cannot be cut at bottom (this would lead to empty cube)
                     if (halfWeight != 0) {
                         var halfDistance = halfRed * halfRed + halfGreen * halfGreen + halfBlue * halfBlue, temp = halfDistance / halfWeight;
@@ -1659,20 +1781,20 @@ var IQ;
                 return result;
             };
             // Cuts a cube with another one.
-            WuQuant.prototype.Cut = function (first, second) {
-                var direction, cutRed = [0], cutGreen = [0], cutBlue = [0], wholeRed = WuQuant.Volume(first, this.momentsRed), wholeGreen = WuQuant.Volume(first, this.momentsGreen), wholeBlue = WuQuant.Volume(first, this.momentsBlue), wholeWeight = WuQuant.Volume(first, this.weights), maxRed = this.Maximize(first, WuQuant.Red, first.RedMinimum + 1, first.RedMaximum, cutRed, wholeRed, wholeGreen, wholeBlue, wholeWeight), maxGreen = this.Maximize(first, WuQuant.Green, first.GreenMinimum + 1, first.GreenMaximum, cutGreen, wholeRed, wholeGreen, wholeBlue, wholeWeight), maxBlue = this.Maximize(first, WuQuant.Blue, first.BlueMinimum + 1, first.BlueMaximum, cutBlue, wholeRed, wholeGreen, wholeBlue, wholeWeight);
+            WuQuant.prototype._cut = function (first, second) {
+                var direction, cutRed = [0], cutGreen = [0], cutBlue = [0], wholeRed = WuQuant.volume(first, this._momentsRed), wholeGreen = WuQuant.volume(first, this._momentsGreen), wholeBlue = WuQuant.volume(first, this._momentsBlue), wholeWeight = WuQuant.volume(first, this._weights), maxRed = this._maximize(first, WuQuant.red, first.RedMinimum + 1, first.RedMaximum, cutRed, wholeRed, wholeGreen, wholeBlue, wholeWeight), maxGreen = this._maximize(first, WuQuant.green, first.GreenMinimum + 1, first.GreenMaximum, cutGreen, wholeRed, wholeGreen, wholeBlue, wholeWeight), maxBlue = this._maximize(first, WuQuant.blue, first.BlueMinimum + 1, first.BlueMaximum, cutBlue, wholeRed, wholeGreen, wholeBlue, wholeWeight);
                 if ((maxRed >= maxGreen) && (maxRed >= maxBlue)) {
-                    direction = WuQuant.Red;
+                    direction = WuQuant.red;
                     // cannot split empty cube
                     if (cutRed[0] < 0)
                         return false;
                 }
                 else {
                     if ((maxGreen >= maxRed) && (maxGreen >= maxBlue)) {
-                        direction = WuQuant.Green;
+                        direction = WuQuant.green;
                     }
                     else {
-                        direction = WuQuant.Blue;
+                        direction = WuQuant.blue;
                     }
                 }
                 second.RedMaximum = first.RedMaximum;
@@ -1680,17 +1802,17 @@ var IQ;
                 second.BlueMaximum = first.BlueMaximum;
                 // cuts in a certain direction
                 switch (direction) {
-                    case WuQuant.Red:
+                    case WuQuant.red:
                         second.RedMinimum = first.RedMaximum = cutRed[0];
                         second.GreenMinimum = first.GreenMinimum;
                         second.BlueMinimum = first.BlueMinimum;
                         break;
-                    case WuQuant.Green:
+                    case WuQuant.green:
                         second.GreenMinimum = first.GreenMaximum = cutGreen[0];
                         second.RedMinimum = first.RedMinimum;
                         second.BlueMinimum = first.BlueMinimum;
                         break;
-                    case WuQuant.Blue:
+                    case WuQuant.blue:
                         second.BlueMinimum = first.BlueMaximum = cutBlue[0];
                         second.RedMinimum = first.RedMinimum;
                         second.GreenMinimum = first.GreenMinimum;
@@ -1702,155 +1824,12 @@ var IQ;
                 // the cut was successfull
                 return true;
             };
-            // Marks all the tags with a given label.
-            WuQuant.Mark = function (cube, label, /*IList<Int32>*/ tag) {
-                for (var redIndex = cube.RedMinimum + 1; redIndex <= cube.RedMaximum; ++redIndex) {
-                    for (var greenIndex = cube.GreenMinimum + 1; greenIndex <= cube.GreenMaximum; ++greenIndex) {
-                        for (var blueIndex = cube.BlueMinimum + 1; blueIndex <= cube.BlueMaximum; ++blueIndex) {
-                            tag[(redIndex << 10) + (redIndex << 6) + redIndex + (greenIndex << 5) + greenIndex + blueIndex] = label;
-                        }
-                    }
-                }
-            };
-            WuQuant.prototype.sample = function (image) {
-                var _this = this;
-                // creates all the _cubes
-                this._cubes = [];
-                // initializes all the _cubes
-                for (var cubeIndex = 0; cubeIndex < WuQuant.MaxColor; cubeIndex++) {
-                    this._cubes[cubeIndex] = new Palette.WuColorCube();
-                }
-                // resets the reference minimums
-                this._cubes[0].RedMinimum = 0;
-                this._cubes[0].GreenMinimum = 0;
-                this._cubes[0].BlueMinimum = 0;
-                // resets the reference maximums
-                this._cubes[0].RedMaximum = WuQuant.MaxSideIndex;
-                this._cubes[0].GreenMaximum = WuQuant.MaxSideIndex;
-                this._cubes[0].BlueMaximum = WuQuant.MaxSideIndex;
-                this.weights = createArray3D(WuQuant.SideSize, WuQuant.SideSize, WuQuant.SideSize);
-                this.momentsRed = createArray3D(WuQuant.SideSize, WuQuant.SideSize, WuQuant.SideSize);
-                this.momentsGreen = createArray3D(WuQuant.SideSize, WuQuant.SideSize, WuQuant.SideSize);
-                this.momentsBlue = createArray3D(WuQuant.SideSize, WuQuant.SideSize, WuQuant.SideSize);
-                this.moments = createArray3D(WuQuant.SideSize, WuQuant.SideSize, WuQuant.SideSize);
-                this.table = [];
-                for (var tableIndex = 0; tableIndex < 256; ++tableIndex) {
-                    this.table[tableIndex] = tableIndex * tableIndex;
-                }
-                this.quantizedPixels = [];
-                this.pixels = [];
-                var pointArray = image.getPointArray();
-                pointArray.forEach(function (color) {
-                    _this.addColor(color);
-                });
-            };
-            WuQuant.prototype.addColor = function (color) {
-                var indexRed = (color.r >> 3) + 1, indexGreen = (color.g >> 3) + 1, indexBlue = (color.b >> 3) + 1;
-                this.weights[indexRed][indexGreen][indexBlue]++;
-                this.momentsRed[indexRed][indexGreen][indexBlue] += color.r;
-                this.momentsGreen[indexRed][indexGreen][indexBlue] += color.g;
-                this.momentsBlue[indexRed][indexGreen][indexBlue] += color.b;
-                this.moments[indexRed][indexGreen][indexBlue] += this.table[color.r] + this.table[color.g] + this.table[color.b];
-                this.quantizedPixels.push((indexRed << 10) + (indexRed << 6) + indexRed + (indexGreen << 5) + indexGreen + indexBlue);
-                this.pixels.push(color);
-            };
-            WuQuant.prototype.quantize = function () {
-                var l;
-                // preprocess the colors
-                this.CalculateMoments();
-                var next = 0, volumeVariance = createArray1D(WuQuant.MaxColor);
-                // processes the _cubes
-                for (var cubeIndex = 1; cubeIndex < this._colors; ++cubeIndex) {
-                    // if cut is possible; make it
-                    if (this.Cut(this._cubes[next], this._cubes[cubeIndex])) {
-                        volumeVariance[next] = this._cubes[next].Volume > 1 ? this.CalculateVariance(this._cubes[next]) : 0.0;
-                        volumeVariance[cubeIndex] = this._cubes[cubeIndex].Volume > 1 ? this.CalculateVariance(this._cubes[cubeIndex]) : 0.0;
-                    }
-                    else {
-                        // the cut was not possible, revert the index
-                        volumeVariance[next] = 0.0;
-                        cubeIndex--;
-                    }
-                    next = 0;
-                    var temp = volumeVariance[0];
-                    for (var index = 1; index <= cubeIndex; ++index) {
-                        if (typeof volumeVariance[index] !== "number")
-                            throw new Error("x");
-                        if (volumeVariance[index] > temp) {
-                            temp = volumeVariance[index];
-                            next = index;
-                        }
-                    }
-                    if (temp <= 0.0) {
-                        this._colors = cubeIndex + 1;
-                        break;
-                    }
-                }
-                var lookupRed = [], lookupGreen = [], lookupBlue = [];
-                // TODO: check, i think initializetion is not needed here!
-                this.tag = createArray1D(WuQuant.MaxVolume);
-                // precalculates lookup tables
-                for (var k = 0; k < this._colors; ++k) {
-                    WuQuant.Mark(this._cubes[k], k, this.tag);
-                    var weight = WuQuant.Volume(this._cubes[k], this.weights);
-                    if (weight > 0) {
-                        lookupRed[k] = (WuQuant.Volume(this._cubes[k], this.momentsRed) / weight) | 0;
-                        lookupGreen[k] = (WuQuant.Volume(this._cubes[k], this.momentsGreen) / weight) | 0;
-                        lookupBlue[k] = (WuQuant.Volume(this._cubes[k], this.momentsBlue) / weight) | 0;
-                    }
-                    else {
-                        lookupRed[k] = 0;
-                        lookupGreen[k] = 0;
-                        lookupBlue[k] = 0;
-                    }
-                }
-                // copies the per pixel tags
-                l = this.quantizedPixels.length;
-                for (var index = 0; index < l; ++index) {
-                    this.quantizedPixels[index] = this.tag[this.quantizedPixels[index]];
-                }
-                this.reds = createArray1D(this._colors + 1);
-                this.greens = createArray1D(this._colors + 1);
-                this.blues = createArray1D(this._colors + 1);
-                this.sums = createArray1D(this._colors + 1);
-                // scans and adds colors
-                l = this.pixels.length;
-                for (var index = 0; index < l; index++) {
-                    var color = this.pixels[index];
-                    var match = this.quantizedPixels[index], bestMatch = match, bestDistance = 100000000;
-                    for (var lookup = 0; lookup < this._colors; lookup++) {
-                        var foundRed = lookupRed[lookup], foundGreen = lookupGreen[lookup], foundBlue = lookupBlue[lookup], deltaRed = color.r - foundRed, deltaGreen = color.g - foundGreen, deltaBlue = color.b - foundBlue, distance = deltaRed * deltaRed + deltaGreen * deltaGreen + deltaBlue * deltaBlue;
-                        if (distance < bestDistance) {
-                            bestDistance = distance;
-                            bestMatch = lookup;
-                        }
-                    }
-                    this.reds[bestMatch] += color.r;
-                    this.greens[bestMatch] += color.g;
-                    this.blues[bestMatch] += color.b;
-                    this.sums[bestMatch]++;
-                }
-                var palette = new IQ.Utils.Palette();
-                // generates palette
-                for (var paletteIndex = 0; paletteIndex < this._colors; paletteIndex++) {
-                    if (this.sums[paletteIndex] > 0) {
-                        this.reds[paletteIndex] = (this.reds[paletteIndex] / this.sums[paletteIndex]) | 0;
-                        this.greens[paletteIndex] = (this.greens[paletteIndex] / this.sums[paletteIndex]) | 0;
-                        this.blues[paletteIndex] = (this.blues[paletteIndex] / this.sums[paletteIndex]) | 0;
-                    }
-                    var color = IQ.Utils.Point.createByRGBA(this.reds[paletteIndex], this.greens[paletteIndex], this.blues[paletteIndex], 255);
-                    palette.add(color);
-                }
-                palette.sort();
-                return palette;
-            };
-            WuQuant.MaxColor = 512;
-            WuQuant.Red = 2;
-            WuQuant.Green = 1;
-            WuQuant.Blue = 0;
-            WuQuant.SideSize = 33;
-            WuQuant.MaxSideIndex = 32;
-            WuQuant.MaxVolume = WuQuant.SideSize * WuQuant.SideSize * WuQuant.SideSize;
+            WuQuant.maxColors = 512;
+            WuQuant.red = 2;
+            WuQuant.green = 1;
+            WuQuant.blue = 0;
+            WuQuant.sideSize = 33;
+            WuQuant.maxSideIndex = 32;
             return WuQuant;
         })();
         Palette.WuQuant = WuQuant;

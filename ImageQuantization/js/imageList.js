@@ -2,6 +2,7 @@ var APP;
 (function(exports) {
 	exports.images = {
 		"alpha" : [
+			"children-745674_1920.png",
 			"alpha.png",
 			"AlphaBall.png",
 			"AlphaEdge.png",
@@ -49,6 +50,10 @@ var APP;
 			"redpanda.jpg"
 		],
 		"photos2" : [
+			"book-shelf-349934_1920.jpg",
+			"children-602977_1920.png",
+			"old-books-436498_1920.png",
+			"pens-93177_1920.png",
 			"baby.jpg",
 			"chopsuey.jpg",
 			"fish.jpg",
