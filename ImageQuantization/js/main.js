@@ -1,7 +1,7 @@
 var APP;
 (function(exports) {
 	exports.main = function() {
-		var imagesDiv = document.getElementById("images")
+		var imagesDiv = document.getElementById("images");
 		for(var category in exports.images) {
 			if(exports.images.hasOwnProperty(category)) {
 				var url = "img/" + category + "/",
@@ -36,20 +36,38 @@ var APP;
 			}
 		}
 	};
+
+    function setOriginalVisibility(visible) {
+        var original = document.getElementById("original-image");
+        var reduced = document.getElementById("reduced-image");
+
+        if(original) original.style.display = visible ? "block" : "none";
+        if(reduced) reduced.style.display = !visible ?  "block" : "none";
+        document.getElementById("reduced-title").innerHTML = visible ? "Original Image" : "Reduced Image"
+    }
+
 	exports.onMouse = function(isDown, e) {
-		var e = e || window.event,
-			x = e.pageX, y = e.pageY;
+		e = e || window.event;
+		var x = e.pageX, y = e.pageY;
 
 		var div = document.getElementById("reduced-image-container");
 		if(x >= div.offsetLeft && x < div.offsetLeft + div.offsetWidth && y >= div.offsetTop && y < div.offsetTop + div.offsetHeight || !isDown) {
-			var original = document.getElementById("original-image");
-			var reduced = document.getElementById("reduced-image");
-
-			if(original) original.style.display = isDown ? "block" : "none";
-			if(reduced) reduced.style.display = !isDown ?  "block" : "none";
-			document.getElementById("reduced-title").innerHTML = isDown ? "Original Image" : "Reduced Image"
+            setOriginalVisibility(isDown);
 		}
 	};
+
+    exports.onTouchEvent = function(isDown, e) {
+        e = e || window.event;
+
+        if(e.touches.length <= 0) return;
+        var x = e.touches[0].pageX, y = e.touches[0].pageY;
+
+        var div = document.getElementById("reduced-image-container");
+        if(x >= div.offsetLeft && x < div.offsetLeft + div.offsetWidth && y >= div.offsetTop && y < div.offsetTop + div.offsetHeight || !isDown) {
+            setOriginalVisibility(isDown);
+        }
+
+    };
 
 	var lastChangeTime = null;
 	exports.onConfigChanged = function() {

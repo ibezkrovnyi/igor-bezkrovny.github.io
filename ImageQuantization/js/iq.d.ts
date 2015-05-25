@@ -242,31 +242,36 @@ declare module IQ.Palette {
 }
 declare module IQ.Palette {
     class WuColorCube {
-        RedMinimum: any;
-        RedMaximum: any;
-        GreenMinimum: any;
-        GreenMaximum: any;
-        BlueMinimum: any;
-        BlueMaximum: any;
-        Volume: any;
+        redMinimum: any;
+        redMaximum: any;
+        greenMinimum: any;
+        greenMaximum: any;
+        blueMinimum: any;
+        blueMaximum: any;
+        volume: any;
+        alphaMinimum: any;
+        alphaMaximum: any;
     }
-}
-declare module IQ.Palette {
     class WuQuant {
         private static maxColors;
         private static red;
         private static green;
         private static blue;
-        private static sideSize;
+        private static alpha;
         private static maxSideIndex;
+        private static alphaMaxSideIndex;
+        private static sideSize;
+        private static alphaSideSize;
         private _reds;
         private _greens;
         private _blues;
+        private _alphas;
         private _sums;
         private _weights;
         private _momentsRed;
         private _momentsGreen;
         private _momentsBlue;
+        private _momentsAlpha;
         private _moments;
         private _table;
         private _pixels;
@@ -275,7 +280,7 @@ declare module IQ.Palette {
         constructor(colors?: number);
         sample(image: Utils.PointContainer): void;
         quantize(): Utils.Palette;
-        private addColor(color);
+        private _addColor(color);
         /**
          * Converts the histogram to a series of _moments.
          */
@@ -283,15 +288,15 @@ declare module IQ.Palette {
         /**
          * Computes the volume of the cube in a specific moment.
          */
-        private static volume(cube, moment);
+        private static _volume(cube, moment);
         /**
-         * Splits the cube in given position, and color direction.
+         * Splits the cube in given position][and color direction.
          */
-        private static top(cube, direction, position, moment);
+        private static _top(cube, direction, position, moment);
         /**
          * Splits the cube in a given color direction at its minimum.
          */
-        private static bottom(cube, direction, moment);
+        private static _bottom(cube, direction, moment);
         /**
          * Calculates statistical variance for a given cube.
          */
@@ -299,7 +304,7 @@ declare module IQ.Palette {
         /**
          * Finds the optimal (maximal) position for the cut.
          */
-        private _maximize(cube, direction, first, last, cut, wholeRed, wholeGreen, wholeBlue, wholeWeight);
+        private _maximize(cube, direction, first, last, cut, wholeRed, wholeGreen, wholeBlue, wholeAlpha, wholeWeight);
         private _cut(first, second);
     }
 }
