@@ -15,7 +15,7 @@ var APP;
 	}
 
 	function drawPixels (pointContainer, width0, width1) {
-		var idxi8 = pointContainer.exportUint8Array(),
+		var idxi8 = pointContainer.toUint8Array(),
 			idxi32 = new Uint32Array(idxi8.buffer);
 
 		width1 = width1 || width0;
@@ -53,7 +53,24 @@ var APP;
 		return can2;
 	}
 
-	exports.process = function (img, optionColors, optionPaletteQuantizer, optionImageDithering) {
+	function getColorDistanceCalculator(option) {
+		switch(option) {
+			case 0:
+				return new IQ.Color.DistanceEuclidean();
+			case 1:
+				return new IQ.Color.DistanceManhattan();
+			case 2:
+				return new IQ.Color.DistanceCIEDE2000();
+			case 3:
+				return new IQ.Color.DistanceEuclideanRgbQuantWOAlpha();
+			case 4:
+				return new IQ.Color.DistanceManhattanNeuQuant();
+			case 5:
+				return new IQ.Color.DistanceEuclideanWuQuant();
+		}
+	}
+
+	exports.process = function (img, optionColors, optionPaletteQuantizer, optionImageDithering, optionColorDistance) {
 		var pointBuffer,
 			originalPointBuffer,
 			paletteQuantizer,
@@ -61,22 +78,24 @@ var APP;
 			pal8,
 			img8;
 
-		pointBuffer = new IQ.Utils.PointContainer();
-		pointBuffer.importHTMLImageElement(img);
+		pointBuffer = IQ.Utils.PointContainer.fromHTMLImageElement(img);
 		originalPointBuffer = pointBuffer.clone();
 
 		var time = Date.now();
 
-		timeMark("...sample", function () {
+		console.log("image = " + id);
+        timeMark("...sample", function () {
+			var distance = getColorDistanceCalculator(optionColorDistance);
+
 			switch(optionPaletteQuantizer) {
 				case "neuquant":
-					paletteQuantizer = new IQ.Palette.NeuQuant(optionColors);
+					paletteQuantizer = new IQ.Palette.NeuQuant(distance, optionColors);
 					break;
 				case "wuquant":
-					paletteQuantizer = new IQ.Palette.WuQuant(optionColors);
+					paletteQuantizer = new IQ.Palette.WuQuant(distance, optionColors);
 					break;
 				case "rgbquant":
-					paletteQuantizer = new IQ.Palette.RgbQuant(optionColors);
+					paletteQuantizer = new IQ.Palette.RgbQuant(distance, optionColors);
 					break;
 			}
 			paletteQuantizer.sample(pointBuffer);
@@ -87,11 +106,13 @@ var APP;
 		});
 
 		timeMark("...dither", function () {
+			var distance = getColorDistanceCalculator(optionColorDistance);
+
 			var imageQuantizer;
 			if (optionImageDithering === -1) {
-				imageQuantizer = new IQ.Image.NearestNeighbour();
+				imageQuantizer = new IQ.Image.NearestNeighbour(distance);
 			} else {
-				imageQuantizer = new IQ.Image.ErrorDiffusionDithering(optionImageDithering);
+				imageQuantizer = new IQ.Image.ErrorDiffusionDithering(distance, optionImageDithering);
 			}
 
 			img8 = imageQuantizer.quantize(pointBuffer, pal8);

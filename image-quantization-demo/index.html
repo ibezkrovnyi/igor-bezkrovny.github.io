@@ -30,6 +30,16 @@
 					</datalist>
 				</div>
 				<div class="option">
+					Color Distance Formula: <select id="colorDistance" onchange="APP.onConfigChanged()">
+						<option value="0">Euclidean</option>
+						<option value="1">Manhattan</option>
+						<option value="2">CIEDE2000</option>
+						<option value="3">RgbQuant Euclidean (w/o ALPHA)</option>
+						<option value="4" selected>NeuQuant Manhattan (w/o sRGB coef)</option>
+						<option value="5">WuQuant Euclidean (w/o sRGB coef)</option>
+					</select>
+				</div>
+				<div class="option">
 					Palette Quantizer: <select id="paletteQuantizer" onchange="APP.onConfigChanged()">
 					<option value="neuquant" selected>NeuQuant</option>
 					<option value="rgbquant">RgbQuant</option>
@@ -50,6 +60,7 @@
 					<option value="1">ErrorDiffusion: False Floyd-Steinberg</option>
 				</select>                <!--<label>dithSerp: <input id="dithSerp" type="checkbox"></label>,                minHueCols: <input id="minHueCols" type="text" value="0" class="autosize">,-->
 				</div>
+				<input type="button" value="update" onclick="APP.onConfigChanged(true)">
 			</div>
 		</div>
 

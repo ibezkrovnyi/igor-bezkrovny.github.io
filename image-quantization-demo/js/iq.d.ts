@@ -1,3 +1,130 @@
+declare module IQ.Color {
+    interface IDistanceCalculator {
+        setMaximalColorDeltas(maxRedDelta: number, maxGreenDelta: number, maxBlueDelta: number, maxAlphaDelta: number): void;
+        calculateRaw(r1: number, g1: number, b1: number, a1: number, r2: number, g2: number, b2: number, a2: number): number;
+        calculateNormalized(colorA: Utils.Point, colorB: Utils.Point): number;
+    }
+}
+declare module IQ.Color.Constants.sRGB {
+    enum Y {
+        RED = 0.2126,
+        GREEN = 0.7152,
+        BLUE = 0.0722,
+        WHITE = 1,
+    }
+    enum x {
+        RED = 0.64,
+        GREEN = 0.3,
+        BLUE = 0.15,
+        WHITE = 0.3127,
+    }
+    enum y {
+        RED = 0.33,
+        GREEN = 0.6,
+        BLUE = 0.06,
+        WHITE = 0.329,
+    }
+}
+declare module IQ.Color {
+    class Conversion {
+        static rgb2lab(r: number, g: number, b: number): {
+            L: number;
+            a: number;
+            b: number;
+        };
+        static lab2rgb(L: number, a: number, b: number): {
+            r: number;
+            g: number;
+            b: number;
+        };
+        static rgb2xyz(r: number, g: number, b: number): {
+            x: number;
+            y: number;
+            z: number;
+        };
+        static xyz2rgb(x: number, y: number, z: number): {
+            r: number;
+            g: number;
+            b: number;
+        };
+        private static _refX;
+        private static _refY;
+        private static _refZ;
+        static xyz2lab(x: number, y: number, z: number): {
+            L: number;
+            a: number;
+            b: number;
+        };
+        static lab2xyz(L: number, a: number, b: number): {
+            x: number;
+            y: number;
+            z: number;
+        };
+        static rgb2lum(r: number, g: number, b: number): number;
+        static rgb2hsl(r: number, g: number, b: number): {
+            h: any;
+            s: any;
+            l: number;
+        };
+    }
+}
+declare module IQ.Color {
+    class DistanceEuclidean implements IDistanceCalculator {
+        protected _Pr: number;
+        protected _Pg: number;
+        protected _Pb: number;
+        protected _Pa: number;
+        protected _maxEuclideanDistance: number;
+        constructor();
+        protected _setDefaults(): void;
+        calculateRaw(r1: number, g1: number, b1: number, a1: number, r2: number, g2: number, b2: number, a2: number): number;
+        calculateNormalized(colorA: Utils.Point, colorB: Utils.Point): number;
+        /**
+         * To simulate original RgbQuant distance you need to set `maxAlphaDelta = 0`
+         */
+        setMaximalColorDeltas(maxRedDelta: number, maxGreenDelta: number, maxBlueDelta: number, maxAlphaDelta: number): void;
+    }
+    class DistanceEuclideanWuQuant extends DistanceEuclidean implements IDistanceCalculator {
+        protected _setDefaults(): void;
+    }
+    class DistanceEuclideanRgbQuantWOAlpha extends DistanceEuclidean implements IDistanceCalculator {
+        protected _setDefaults(): void;
+    }
+    class DistanceManhattan implements IDistanceCalculator {
+        protected _Pr: number;
+        protected _Pg: number;
+        protected _Pb: number;
+        protected _Pa: number;
+        protected _maxManhattanDistance: number;
+        constructor();
+        protected _setDefaults(): void;
+        setMaximalColorDeltas(maxRedDelta: number, maxGreenDelta: number, maxBlueDelta: number, maxAlphaDelta: number): void;
+        calculateRaw(r1: number, g1: number, b1: number, a1: number, r2: number, g2: number, b2: number, a2: number): number;
+        calculateNormalized(colorA: Utils.Point, colorB: Utils.Point): number;
+    }
+    class DistanceManhattanNeuQuant extends DistanceManhattan implements IDistanceCalculator {
+        protected _setDefaults(): void;
+    }
+    class DistanceCIEDE2000 implements IDistanceCalculator {
+        setMaximalColorDeltas(maxRedDelta: number, maxGreenDelta: number, maxBlueDelta: number, maxAlphaDelta: number): void;
+        calculateRaw(r1: number, g1: number, b1: number, a1: number, r2: number, g2: number, b2: number, a2: number): number;
+        calculateRawInLab(Lab1: {
+            L: number;
+            a: number;
+            b: number;
+        }, alpha1: number, Lab2: {
+            L: number;
+            a: number;
+            b: number;
+        }, alpha2: number): number;
+        calculateNormalized(colorA: Utils.Point, colorB: Utils.Point): number;
+        private _degrees(n);
+        private _radians(n);
+        private _hp_f(x, y);
+        private _a_hp_f(C1, C2, h1p, h2p);
+        private _dhp_f(C1, C2, h1p, h2p);
+    }
+}
 declare module IQ.Utils {
     /**
      * v8 optimized class
@@ -14,8 +141,8 @@ declare module IQ.Utils {
         a: number;
         uint32: number;
         rgba: number[];
-        lab: {
-            l: number;
+        Lab: {
+            L: number;
             a: number;
             b: number;
         };
@@ -24,7 +151,6 @@ declare module IQ.Utils {
         static createByUint32(uint32: number): Point;
         constructor();
         from(point: Point): void;
-        set(...args: number[]): void;
         getLuminosity(useAlphaChannel: any): number;
         private _loadUINT32();
         private _loadRGBA();
@@ -34,6 +160,9 @@ declare module IQ.Utils {
 declare module IQ.Utils {
     function typeOf(val: any): any;
     function rgb2lum(r: any, g: any, b: any): number;
+    function max3(a: any, b: any, c: any): any;
+    function min3(a: any, b: any, c: any): any;
+    function intInRange(value: any, low: any, high: any): number;
     function rgb2hsl(r: any, g: any, b: any): {
         h: any;
         s: any;
@@ -57,7 +186,6 @@ declare module IQ.Utils {
         a: number;
         b: number;
     };
-    function CIE94Distance(colorA: Point, colorB: Point): number;
 }
 declare module IQ.Utils {
     class HueStatistics {
@@ -85,7 +213,7 @@ declare module IQ.Utils {
         getImportanceSortedColorsIDXI32(): any;
         private _colorStats1D(pointBuffer);
         private _colorStats2D(pointBuffer);
-        private _iterBox(bbox, wid, fn);
+        private _iterateBox(bbox, wid, fn);
     }
 }
 declare module IQ.Utils {
@@ -95,10 +223,10 @@ declare module IQ.Utils {
         private _i32idx;
         constructor();
         add(color: Point): void;
-        getNearestColor(color: Point): Point;
+        getNearestColor(colorDistanceCalculator: Color.IDistanceCalculator, color: Point): Point;
         getPointContainer(): PointContainer;
         private _nearestPointFromCache(key);
-        private getNearestIndex(point);
+        private getNearestIndex(colorDistanceCalculator, point);
         sort(): void;
     }
 }
@@ -114,19 +242,19 @@ declare module IQ.Utils {
         setHeight(height: number): void;
         getPointArray(): Point[];
         clone(): PointContainer;
-        importHTMLImageElement(img: HTMLImageElement): void;
-        importHTMLCanvasElement(canvas: HTMLCanvasElement): void;
-        importNodeCanvas(canvas: any): void;
-        importImageData(imageData: ImageData): void;
-        importArray(data: number[], width: number, height: number): void;
-        importCanvasPixelArray(data: any, width: number, height: number): void;
-        importUint32Array(uint32array: Uint32Array, width: number, height: number): void;
-        exportUint32Array(): Uint32Array;
-        exportUint8Array(): Uint8Array;
+        toUint32Array(): Uint32Array;
+        toUint8Array(): Uint8Array;
+        static fromHTMLImageElement(img: HTMLImageElement): PointContainer;
+        static fromHTMLCanvasElement(canvas: HTMLCanvasElement): PointContainer;
+        static fromNodeCanvas(canvas: any): PointContainer;
+        static fromImageData(imageData: ImageData): PointContainer;
+        static fromArray(data: number[], width: number, height: number): PointContainer;
+        static fromCanvasPixelArray(data: any, width: number, height: number): PointContainer;
+        static fromUint32Array(uint32array: Uint32Array, width: number, height: number): PointContainer;
     }
 }
 declare module IQ.Image {
-    interface IImageQuantizer {
+    interface IImageDitherer {
         quantize(pointBuffer: Utils.PointContainer, palette: Utils.Palette): Utils.PointContainer;
     }
 }
@@ -142,19 +270,22 @@ declare module IQ.Image {
         TwoSierra = 7,
         SierraLite = 8,
     }
-    class ErrorDiffusionDithering implements IImageQuantizer {
+    class ErrorDiffusionDithering implements IImageDitherer {
         private _minColorDistance;
         private _serpentine;
         private _kernel;
         private _calculateErrorLikeGIMP;
-        constructor(kernel: ErrorDiffusionDitheringKernel, serpentine?: boolean, minimumColorDistanceToDither?: number, calculateErrorLikeGIMP?: boolean);
+        private _distance;
+        constructor(colorDistanceCalculator: Color.IDistanceCalculator, kernel: ErrorDiffusionDitheringKernel, serpentine?: boolean, minimumColorDistanceToDither?: number, calculateErrorLikeGIMP?: boolean);
         quantize(pointBuffer: Utils.PointContainer, palette: Utils.Palette): Utils.PointContainer;
         private _fillErrorLine(errorLine, width);
         private _setKernel(kernel);
     }
 }
 declare module IQ.Image {
-    class NearestNeighbour implements IImageQuantizer {
+    class NearestNeighbour implements IImageDitherer {
+        private _distance;
+        constructor(colorDistanceCalculator: Color.IDistanceCalculator);
         quantize(pointBuffer: Utils.PointContainer, palette: Utils.Palette): Utils.PointContainer;
     }
 }
@@ -174,18 +305,15 @@ declare module IQ {
 declare module IQ.Palette {
     class NeuQuant implements IPaletteQuantizer {
         private _pointArray;
-        private _netsize;
+        private _networkSize;
         private _network;
-        private _samplefac;
-        private _radpower;
+        /** sampling factor 1..30 */
+        private _sampleFactor;
+        private _radPower;
         private _freq;
         private _bias;
-        /**
-         *
-         * @param colors
-         * @param sampleFactor sampling factor 1..30
-         */
-        constructor(colors?: number, sampleFactor?: number);
+        private _distance;
+        constructor(colorDistanceCalculator: Color.IDistanceCalculator, colors?: number);
         sample(pointBuffer: Utils.PointContainer): void;
         quantize(): Utils.Palette;
         private _init();
@@ -213,11 +341,24 @@ declare module IQ.Palette {
         /**
          * Search for biased BGR values
          * description:
-         *	finds closest neuron (min dist) and updates freq
-         *	finds best neuron (min dist-bias) and returns position
-         *	for frequently chosen neurons, freq[i] is high and bias[i] is negative
-         *	bias[i] = gamma*((1/this._netsize)-freq[i])
-         */
+         *    finds closest neuron (min dist) and updates freq
+         *    finds best neuron (min dist-bias) and returns position
+         *    for frequently chosen neurons, freq[i] is high and bias[i] is negative
+         *    bias[i] = gamma*((1/this._networkSize)-freq[i])
+         *
+         * Original distance formula:
+         * 		dist = n.b - b;
+         * 		if (dist < 0) dist = -dist;
+         * 		a = n.g - g;
+         * 		if (a < 0) a = -a;
+         * 		dist += a;
+         * 		a = n.r - r;
+         * 		if (a < 0) a = -a;
+         * 		dist += a;
+         * 		a = (n.a - al);
+         * 		if (a < 0) a = -a;
+         * 		dist += a;
+        */
         private _contest(b, g, r, al);
     }
 }
@@ -234,7 +375,8 @@ declare module IQ.Palette {
         private _initialDistance;
         private _distanceIncrement;
         private _histogram;
-        constructor(colors?: number, method?: number);
+        private _distance;
+        constructor(colorDistanceCalculator: Color.IDistanceCalculator, colors?: number, method?: number);
         sample(image: Utils.PointContainer): void;
         quantize(): Utils.Palette;
         private _buildPalette(idxi32);
@@ -253,15 +395,10 @@ declare module IQ.Palette {
         alphaMaximum: any;
     }
     class WuQuant {
-        private static maxColors;
+        private static alpha;
         private static red;
         private static green;
         private static blue;
-        private static alpha;
-        private static maxSideIndex;
-        private static alphaMaxSideIndex;
-        private static sideSize;
-        private static alphaSideSize;
         private _reds;
         private _greens;
         private _blues;
@@ -277,14 +414,25 @@ declare module IQ.Palette {
         private _pixels;
         private _cubes;
         private _colors;
-        constructor(colors?: number);
+        private _significantBitsPerChannel;
+        private _maxSideIndex;
+        private _alphaMaxSideIndex;
+        private _sideSize;
+        private _alphaSideSize;
+        private _distance;
+        constructor(colorDistanceCalculator: Color.IDistanceCalculator, colors?: number, significantBitsPerChannel?: number);
         sample(image: Utils.PointContainer): void;
         quantize(): Utils.Palette;
+        private _preparePalette();
         private _addColor(color);
         /**
          * Converts the histogram to a series of _moments.
          */
         private _calculateMoments();
+        /**
+         * Computes the volume of the cube in a specific moment.
+         */
+        private static _volumeFloat(cube, moment);
         /**
          * Computes the volume of the cube in a specific moment.
          */
@@ -304,8 +452,10 @@ declare module IQ.Palette {
         /**
          * Finds the optimal (maximal) position for the cut.
          */
-        private _maximize(cube, direction, first, last, cut, wholeRed, wholeGreen, wholeBlue, wholeAlpha, wholeWeight);
+        private _maximize(cube, direction, first, last, wholeRed, wholeGreen, wholeBlue, wholeAlpha, wholeWeight);
         private _cut(first, second);
+        private _initialize(colors);
+        private _setQuality(significantBitsPerChannel?);
     }
 }
 declare module IQ.Quality {

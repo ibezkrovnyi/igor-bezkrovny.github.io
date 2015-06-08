@@ -32,7 +32,7 @@ var APP;
 		if(target && target.className === "th") {
 			if(currentImage !== target) {
 				currentImage = target;
-				exports.process(currentImage, config.colors, config.paletteQuantizer, config.imageDithering);
+				run();
 			}
 		}
 	};
@@ -70,23 +70,24 @@ var APP;
     };
 
 	var lastChangeTime = null;
-	exports.onConfigChanged = function() {
+	exports.onConfigChanged = function(force) {
 		lastChangeTime = Date.now();
+		if(force) config = {};
 	};
 
 	setInterval(function() {
 		if(!currentImage) {
 			var e = document.getElementsByClassName("th");
-			if(e.length > 0 && typeof e[0].naturalWidth === "number" && e[0].naturalWidth > 0) {
+			if(e.length > 0 && (typeof e[0].naturalWidth === "number") && e[0].naturalWidth > 0) {
 				currentImage = e[0];
-				lastChangeTime = 0;
+				lastChangeTime = Date.now();
 			}
 		}
 		if(JSON.stringify(config) !== JSON.stringify(getConfig()) && lastChangeTime !== null && Date.now() > lastChangeTime + 500) {
 			if(currentImage) {
 				lastChangeTime = null;
 				config = getConfig();
-				exports.process(currentImage, config.colors, config.paletteQuantizer, config.imageDithering);
+				run();
 			}
 		}
 	}, 50);
@@ -99,21 +100,27 @@ var APP;
 			document.getElementById("colors").value = colors;
 
 			config = getConfig();
-			exports.process(currentImage, config.colors, config.initialColors, config.paletteQuantizer, config.imageDithering);
+			run();
 		}
 	};
+
+	function run() {
+		exports.process(currentImage, config.colors, config.paletteQuantizer, config.imageDithering, config.colorDistance);
+	}
 
 	function getConfig() {
 		var optionColors = document.getElementById("colors");
 		var optionPaletteQuantizer = document.getElementById("paletteQuantizer");
 		var optionImageDithering = document.getElementById("imageDithering");
+		var optionColorDistance = document.getElementById("colorDistance");
 
-		if(!optionColors || !optionImageDithering || !optionPaletteQuantizer) return {};
+		if(!optionColorDistance || !optionColors || !optionImageDithering || !optionPaletteQuantizer) return {};
 
 		return {
 			colors : parseInt(optionColors.value, 10),
 			paletteQuantizer : optionPaletteQuantizer.value,
-			imageDithering : parseInt(optionImageDithering.value, 10)
+			imageDithering : parseInt(optionImageDithering.value, 10),
+			colorDistance : parseInt(optionColorDistance.value, 10)
 		}
 	}
 
